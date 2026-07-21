@@ -1,0 +1,6 @@
+node_modules/
+target/
+.idea/
+dist/
+.env
+.DS_Store
