@@ -1,5 +1,6 @@
 package com.equio.backend.transactions.services;
 
+import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.transactions.dto.responses.DashboardSummaryResponse;
 import com.equio.backend.transactions.entities.Category;
 import com.equio.backend.transactions.entities.enums.MovementType;
@@ -24,33 +25,39 @@ public class DashboardServiceImpl implements DashboardService {
 
     private final MovementRepository movementRepository;
     private final BudgetRepository budgetRepository;
+    private final RlsContext rlsContext;
 
-    public DashboardServiceImpl(MovementRepository movementRepository, BudgetRepository budgetRepository) {
+    public DashboardServiceImpl(
+            MovementRepository movementRepository,
+            BudgetRepository budgetRepository,
+            RlsContext rlsContext
+    ) {
         this.movementRepository = movementRepository;
         this.budgetRepository = budgetRepository;
+        this.rlsContext = rlsContext;
     }
 
     @Override
     @Transactional(readOnly = true)
     public DashboardSummaryResponse getSummary(Long userId, int month, int year) {
-        // Calcular el rango de fechas del mes solicitado
+        rlsContext.setUserId(userId);
+
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
-        
+
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
 
-        // Totales del mes
+
         BigDecimal totalIncome = movementRepository.sumAmountByUserIdAndTypeAndDateBetween(
                 userId, MovementType.INCOME, startDateTime, endDateTime);
         BigDecimal totalExpense = movementRepository.sumAmountByUserIdAndTypeAndDateBetween(
                 userId, MovementType.EXPENSE, startDateTime, endDateTime);
 
-        // COALESCE ya retorna 0 desde el repo, pero protegemos por si acaso
+
         if (totalIncome == null) totalIncome = BigDecimal.ZERO;
         if (totalExpense == null) totalExpense = BigDecimal.ZERO;
 
-        // Buscar presupuesto global del usuario (sin categoría asociada)
         List<Budget> globalBudgets = budgetRepository.findByUserId(userId).stream()
                 .filter(b -> b.getCategory() == null)
                 .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
@@ -80,7 +87,6 @@ public class DashboardServiceImpl implements DashboardService {
             balance = totalIncome.subtract(totalExpense);
         }
 
-        // Top 3 categorías de gasto del mes (para el gráfico de anillo)
         List<Object[]> topRaw = movementRepository.findTopExpenseCategoriesByUserIdAndDateBetween(
                 userId, startDateTime, endDateTime, PageRequest.of(0, 3));
 
@@ -89,7 +95,6 @@ public class DashboardServiceImpl implements DashboardService {
             Category cat = (Category) row[0];
             BigDecimal catTotal = (BigDecimal) row[1];
 
-            // Porcentaje del total gastado que representa esta categoría
             double percentage = 0.0;
             if (totalExpense.compareTo(BigDecimal.ZERO) > 0) {
                 percentage = catTotal.divide(totalExpense, 4, RoundingMode.HALF_UP)

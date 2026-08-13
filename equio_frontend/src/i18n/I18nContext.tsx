@@ -1,15 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { translations, type AppLanguage } from './translations';
+import { I18nContext, type I18nContextValue } from './i18nContextValue';
 
 type TranslationLeaf = string;
-
-interface I18nContextType {
-  language: AppLanguage;
-  setLanguage: (language: AppLanguage) => void;
-  t: (key: string, params?: Record<string, string | number>) => string;
-}
-
-const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 function getBrowserLanguage(): AppLanguage {
   if (typeof navigator === 'undefined') {
@@ -52,18 +45,6 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       return stored;
     }
 
-    try {
-      const rawUser = localStorage.getItem('user');
-      if (rawUser) {
-        const user = JSON.parse(rawUser);
-        if (user?.language === 'es' || user?.language === 'en') {
-          return user.language;
-        }
-      }
-    } catch {
-      return getBrowserLanguage();
-    }
-
     return getBrowserLanguage();
   });
 
@@ -76,7 +57,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     document.documentElement.lang = language;
   }, [language]);
 
-  const value = useMemo<I18nContextType>(() => ({
+  const value = useMemo<I18nContextValue>(() => ({
     language,
     setLanguage,
     t: (key, params) => {
@@ -86,12 +67,4 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }), [language]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
-}
-
-export function useI18n() {
-  const context = useContext(I18nContext);
-  if (!context) {
-    throw new Error('useI18n must be used within an I18nProvider');
-  }
-  return context;
 }

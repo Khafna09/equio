@@ -1,4 +1,4 @@
-package com.equio.backend.users.controlers;
+package com.equio.backend.users.controllers;
 
 import com.equio.backend.users.dto.requests.ProfileRequest;
 import com.equio.backend.users.dto.responses.ProfileResponse;

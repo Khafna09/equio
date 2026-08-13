@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../utils/apiError';
 import { dashboardApi } from '../api/dashboard.api';
 import type { DashboardSummaryResponse } from '../types/dashboard.types';
+import { useI18n } from '../i18n/i18nContextValue';
 
 export function useDashboard(month?: number, year?: number) {
+  const { t } = useI18n();
   const {
     data,
     isLoading,
@@ -18,7 +21,7 @@ export function useDashboard(month?: number, year?: number) {
   return {
     data: data || null,
     isLoading,
-    error: error ? (error as any).response?.data?.message || 'Error al cargar el dashboard' : null,
+    error: error ? getApiErrorMessage(error, t('common.loadDashboardError')) : null,
     refetch
   };
 }

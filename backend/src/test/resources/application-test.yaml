@@ -1,0 +1,51 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:equio;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: false
+    url: jdbc:h2:mem:equio
+    user: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+app:
+  cors:
+    allowed-origins: http://localhost:5173
+  jwt:
+    secret-base64: dGVzdC1vbmx5LXNlY3JldC10aGF0LWlzLWF0LWxlYXN0LTMyLWJ5dGVzLWxvbmc=
+    issuer: equio-api-test
+    audience: equio-web-test
+    access-expiration-ms: 900000
+  refresh-token:
+    expiration-days: 30
+    cookie-name: equio_refresh
+    cookie-secure: false
+    same-site: Strict
+    domain:
+  security:
+    require-https: false
+    swagger-public: false
+    bcrypt-strength: 10
+    metadata-hash-key-base64: bWV0YWRhdGEtdGVzdC1rZXktdGhhdC1pcy1hdC1sZWFzdC0zMi1ieXRlcw==
+    global-rate-limit-per-minute: 1000
+    login-rate-limit-per-minute: 100
+    account-lock-attempts: 5
+    account-lock-minutes: 15
+    database-auto-create-enabled: false
+    rls-enabled: false
+  unsplash:
+    access-key:
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

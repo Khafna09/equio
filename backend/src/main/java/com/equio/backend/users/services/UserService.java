@@ -6,9 +6,6 @@ import com.equio.backend.users.dto.requests.SignUpRequest;
 
 import java.util.Optional;
 
-/**
- * Interfaz unificada para la lógica de negocio relacionada con los Usuarios.
- */
 public interface UserService {
     
     Optional<User> findById(Long id);

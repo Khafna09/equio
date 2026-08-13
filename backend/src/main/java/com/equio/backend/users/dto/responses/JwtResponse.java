@@ -3,10 +3,14 @@ package com.equio.backend.users.dto.responses;
 import java.util.List;
 
 public record JwtResponse(
-        String token,
+        String accessToken,
+        long expiresInSeconds,
         Long id,
         String email,
         String firstName,
         String lastName,
+        String language,
+        String currency,
         List<String> roles
-) {}
+) {
+}

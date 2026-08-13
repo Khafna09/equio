@@ -4,7 +4,7 @@ import type { CategoryResponse } from '../../types/category.types';
 import { useCategories } from '../../hooks/useCategories';
 import { NewCategoryModal } from '../categories/NewCategoryModal';
 import { useSharedElementModal } from '../../hooks/useSharedElementModal';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface CategoryPickerModalProps {
   isOpen: boolean;

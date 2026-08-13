@@ -6,10 +6,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { BudgetResponse } from '../../types/budget.types';
 
 interface BudgetCardProps {
-  budget: any;
+  budget: BudgetResponse;
   onEdit: () => void;
   onDelete: () => void;
   onUpdateAmount: (newAmount: number) => Promise<void>;
@@ -20,7 +21,7 @@ interface BudgetCardProps {
 
 export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuId, setOpenMenuId, isAdvancedMode = false }: BudgetCardProps) {
   const { formatCurrency: formatCurrencyHook } = useCurrency();
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const formatCurrency = (val: number) => formatCurrencyHook(val, { maximumFractionDigits: 0 });
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [editAmount, setEditAmount] = useState(String(budget.totalAmount));
@@ -45,7 +46,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
         <div className="flex items-center gap-3 min-w-0">
           <div
             className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 border"
-            style={getCategoryBadgeStyle(budget.categoryColor)}
+            style={getCategoryBadgeStyle(budget.categoryColor ?? undefined)}
           >
             {budget.categoryIcon || t('common.folderIcon')}
           </div>
@@ -54,12 +55,12 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
               {budget.name}
               {isAdvancedMode && budget.parentBudgetId && (
                 <span className="text-[10px] bg-primary-50 text-primary-600 px-1.5 py-0.5 rounded-md font-medium uppercase tracking-wider">
-                  {language === 'en' ? 'Linked' : 'Vinculado'}
+                  {t('budgets.linked')}
                 </span>
               )}
               {isAdvancedMode && !budget.parentBudgetId && (
                 <span className="text-[10px] bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 px-1.5 py-0.5 rounded-md font-medium uppercase tracking-wider">
-                  {language === 'en' ? 'Independent' : 'Independiente'}
+                  {t('budgets.independent')}
                 </span>
               )}
             </h3>
@@ -69,7 +70,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
         <div className="relative z-10 flex items-center gap-1">
           <span 
             className="text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 p-1 rounded-lg cursor-grab active:cursor-grabbing transition-colors"
-            title={language === 'en' ? 'Drag to reorder' : 'Arrastra para reordenar'}
+            title={t('budgets.dragToReorder')}
           >
             <GripVertical className="w-4 h-4" />
           </span>
@@ -127,7 +128,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 exit={{ opacity: 0, y: 10 }}
                 className="flex items-center gap-2"
               >
-                <span className="text-neutral-500 dark:text-neutral-400 font-medium">{language === 'en' ? 'of' : 'de'} {formatCurrency(budget.totalAmount)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400 font-medium">{t('common.of')} {formatCurrency(budget.totalAmount)}</span>
                 <button
                   onClick={() => setIsEditingAmount(true)}
                   className="text-neutral-300 hover:text-neutral-500 dark:hover:text-neutral-300 dark:text-neutral-400 transition-colors"
@@ -143,7 +144,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 exit={{ opacity: 0, y: -10 }}
                 className="flex items-center gap-1"
               >
-                <span className="text-neutral-500 dark:text-neutral-400 font-medium">{language === 'en' ? 'of' : 'de'}</span>
+                <span className="text-neutral-500 dark:text-neutral-400 font-medium">{t('common.of')}</span>
                 <input
                   type="number"
                   value={editAmount}

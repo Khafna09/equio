@@ -1,8 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../utils/apiError';
 import { savingsApi } from '../api/savings.api';
 import type { SavingGoalResponse, SavingGoalRequest, FundRequest } from '../types/saving.types';
+import { useI18n } from '../i18n/i18nContextValue';
 
 export function useSavings() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   const {
@@ -59,12 +62,12 @@ export function useSavings() {
     }
   });
 
-  return { 
-    savings, 
-    isLoading, 
-    error: error ? (error as any).response?.data?.message || 'Error al cargar ahorros' : null, 
-    refetch, 
-    createGoal: createMutation.mutateAsync, 
+  return {
+    savings,
+    isLoading,
+    error: error ? getApiErrorMessage(error, t('common.loadSavingsError')) : null,
+    refetch,
+    createGoal: createMutation.mutateAsync,
     updateGoal: async (id: number, data: SavingGoalRequest) => await updateMutation.mutateAsync({ id, data }),
     deleteGoal: async (id: number) => await deleteMutation.mutateAsync(id),
     fundGoal: async (id: number, data: FundRequest) => await fundMutation.mutateAsync({ id, data })

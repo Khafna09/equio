@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { useSavings } from '../../hooks/useSavings';
@@ -7,7 +7,7 @@ import confetti from 'canvas-confetti';
 import { useCurrency } from '../../hooks/useCurrency';
 
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface FundModalProps {
   isOpen: boolean;
@@ -23,13 +23,7 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
   const { symbol, formatCurrency } = useCurrency();
   const [amount, setAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const activeGoalRef = useRef<SavingGoalResponse | null>(null);
-
-  if (goal) {
-    activeGoalRef.current = goal;
-  }
-
-  const currentGoal = activeGoalRef.current;
+  const currentGoal = goal;
 
   const isAdd = operation === 'ADD';
   const title = isAdd ? t('savings.addToGoal') : t('savings.withdrawFromGoal');
@@ -56,8 +50,8 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
 
       onClose();
       setAmount('');
-    } catch (error) {
-      console.error('Failed to fund goal:', error);
+    } catch {
+      alert(t('savings.updateError'));
     } finally {
       setIsSubmitting(false);
     }

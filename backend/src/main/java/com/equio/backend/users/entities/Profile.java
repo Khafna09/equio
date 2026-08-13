@@ -28,13 +28,13 @@ public class Profile extends AuditableModel{
     private String lastName;
 
     @Column(name="language", length = 10)
-    private String language = "es"; // Idioma por defecto
+    private String language = "es";
 
     @Column(name="currency", length = 10)
-    private String currency = "PEN"; // Moneda por defecto
+    private String currency = "PEN";
 
     @Column(name="theme", length = 20)
-    private String theme = "light"; // Tema por defecto
+    private String theme = "light";
 
     public String getLanguage() {
         return language != null ? language : "es";

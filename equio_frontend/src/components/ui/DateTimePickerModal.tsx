@@ -5,7 +5,7 @@ import { es, enUS } from 'date-fns/locale';
 import { setHours, setMinutes } from 'date-fns';
 import { Button } from './Button';
 import 'react-day-picker/dist/style.css';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface DateTimePickerModalProps {
   isOpen: boolean;
@@ -14,7 +14,12 @@ interface DateTimePickerModalProps {
   onSave: (date: Date) => void;
 }
 
-export function DateTimePickerModal({ isOpen, onClose, initialDate, onSave }: DateTimePickerModalProps) {
+export function DateTimePickerModal(props: DateTimePickerModalProps) {
+  const key = `${props.isOpen ? 'open' : 'closed'}-${props.initialDate.getTime()}`;
+  return <DateTimePickerModalContent key={key} {...props} />;
+}
+
+function DateTimePickerModalContent({ isOpen, onClose, initialDate, onSave }: DateTimePickerModalProps) {
   const { t, language } = useI18n();
   const [date, setDate] = useState<Date>(initialDate);
   const [hour, setHour] = useState<number>(initialDate.getHours());
@@ -22,14 +27,6 @@ export function DateTimePickerModal({ isOpen, onClose, initialDate, onSave }: Da
 
   const hourRef = useRef<HTMLDivElement>(null);
   const minuteRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      setDate(initialDate);
-      setHour(initialDate.getHours());
-      setMinute(initialDate.getMinutes());
-    }
-  }, [isOpen, initialDate]);
 
   useEffect(() => {
     // Auto-scroll to selected time
@@ -80,11 +77,10 @@ export function DateTimePickerModal({ isOpen, onClose, initialDate, onSave }: Da
   `;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={language === 'en' ? 'Date and time' : 'Fecha y hora'}>
+    <Modal isOpen={isOpen} onClose={onClose} title={t('components.dateTimeTitle')}>
       <style>{css}</style>
       <div className="flex flex-col md:flex-row gap-6 mt-4">
         
-        {/* Calendar Side */}
         <div className="flex-1 border-b md:border-b-0 md:border-r border-neutral-100 dark:border-neutral-700 pb-6 md:pb-0 md:pr-6 flex justify-center">
           <DayPicker
             mode="single"
@@ -96,10 +92,9 @@ export function DateTimePickerModal({ isOpen, onClose, initialDate, onSave }: Da
           />
         </div>
 
-        {/* Time Side */}
         <div className="w-full md:w-32 flex gap-4 justify-center items-start">
           <div className="flex flex-col items-center">
-            <span className="text-xs font-semibold text-neutral-400 dark:text-neutral-400 mb-2 uppercase">{language === 'en' ? 'Hour' : 'Hora'}</span>
+            <span className="text-xs font-semibold text-neutral-400 dark:text-neutral-400 mb-2 uppercase">{t('components.hour')}</span>
             <div ref={hourRef} className="h-[280px] w-14 overflow-y-auto no-scrollbar scroll-smooth flex flex-col gap-1 border border-neutral-100 dark:border-neutral-700 rounded-xl p-1 shadow-inner bg-neutral-50 dark:bg-neutral-900" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               <style>{`.no-scrollbar::-webkit-scrollbar { display: none; }`}</style>
               {Array.from({ length: 24 }).map((_, i) => (
@@ -119,7 +114,7 @@ export function DateTimePickerModal({ isOpen, onClose, initialDate, onSave }: Da
           <div className="text-xl font-bold text-neutral-300 dark:text-neutral-600 mt-10">:</div>
 
           <div className="flex flex-col items-center">
-            <span className="text-xs font-semibold text-neutral-400 dark:text-neutral-400 mb-2 uppercase">Min</span>
+            <span className="text-xs font-semibold text-neutral-400 dark:text-neutral-400 mb-2 uppercase">{t('components.minute')}</span>
             <div ref={minuteRef} className="h-[280px] w-14 overflow-y-auto no-scrollbar scroll-smooth flex flex-col gap-1 border border-neutral-100 dark:border-neutral-700 rounded-xl p-1 shadow-inner bg-neutral-50 dark:bg-neutral-900" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               {Array.from({ length: 60 }).map((_, i) => (
                 <button

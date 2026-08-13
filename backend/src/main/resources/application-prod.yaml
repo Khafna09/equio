@@ -1,0 +1,19 @@
+spring:
+  main:
+    banner-mode: "off"
+
+server:
+  forward-headers-strategy: framework
+
+app:
+  refresh-token:
+    cookie-secure: true
+  security:
+    require-https: true
+    swagger-public: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

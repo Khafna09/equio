@@ -3,7 +3,7 @@ import { ArrowDownRight, ArrowUpRight, DollarSign } from 'lucide-react';
 import { NumberTicker } from '../../components/ui/number-ticker';
 import { BorderBeam } from '../../components/ui/border-beam';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface BalanceCardProps {
   title: string;

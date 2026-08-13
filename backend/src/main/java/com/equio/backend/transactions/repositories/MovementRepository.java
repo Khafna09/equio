@@ -18,8 +18,9 @@ import java.util.Optional;
 @Repository
 public interface MovementRepository extends JpaRepository<Movement, Long> {
 
-    // --- Consultas básicas por Usuario ---
     List<Movement> findByUserId(Long userId);
+
+    Optional<Movement> findByIdAndUserId(Long id, Long userId);
 
     List<Movement> findByUserIdOrderByDateDescIdDesc(Long userId);
 
@@ -29,7 +30,6 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
 
     List<Movement> findByUserIdAndCategoryId(Long userId, Long categoryId);
 
-    // --- Filtros por Historial (Rango de Fechas: Día, Semana, Mes) ---
     List<Movement> findByUserIdAndDateBetweenOrderByDateDesc(Long userId, LocalDateTime startDate, LocalDateTime endDate);
 
     List<Movement> findByUserIdAndTypeAndDateBetweenOrderByDateDesc(
@@ -40,13 +40,11 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
             Long userId, Long categoryId, LocalDateTime startDate, LocalDateTime endDate
     );
 
-    // --- Consultas de Agregación para Dashboard y Balances ---
 
-    // Suma total histórica por tipo (INCOME / EXPENSE)
     @Query("SELECT COALESCE(SUM(m.amount), 0) FROM Movement m WHERE m.user.id = :userId AND m.type = :type")
     BigDecimal sumAmountByUserIdAndType(@Param("userId") Long userId, @Param("type") MovementType type);
 
-    // Suma total por rango de fechas (ej: ingresos o gastos del mes actual)
+
     @Query("SELECT COALESCE(SUM(m.amount), 0) FROM Movement m " +
            "WHERE m.user.id = :userId AND m.type = :type AND m.date BETWEEN :startDate AND :endDate")
     BigDecimal sumAmountByUserIdAndTypeAndDateBetween(
@@ -56,7 +54,6 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
             @Param("endDate") LocalDateTime endDate
     );
 
-    // Suma de gastos por categoría en un rango de fechas (para el seguimiento de Presupuestos / Budgets)
     @Query("SELECT COALESCE(SUM(m.amount), 0) FROM Movement m " +
            "WHERE m.user.id = :userId AND m.category.id = :categoryId AND m.type = com.equio.backend.transactions.entities.enums.MovementType.EXPENSE " +
            "AND m.date BETWEEN :startDate AND :endDate")
@@ -67,7 +64,6 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
             @Param("endDate") LocalDateTime endDate
     );
 
-    // Top N categorías donde más se ha gastado en un rango de fechas (para gráfico de anillo del Dashboard)
     @Query("SELECT m.category, SUM(m.amount) AS totalSpent FROM Movement m " +
            "WHERE m.user.id = :userId AND m.type = com.equio.backend.transactions.entities.enums.MovementType.EXPENSE AND m.date BETWEEN :startDate AND :endDate " +
            "GROUP BY m.category ORDER BY totalSpent DESC")

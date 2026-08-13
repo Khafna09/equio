@@ -1,13 +1,14 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { useCategories } from '../../hooks/useCategories';
 import type { CategoryResponse } from '../../types/category.types';
 import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
 
-export const COLOR_FAMILIES = [
+const COLOR_FAMILIES = [
   { key: 'colorGreen', colors: ['#10B981', '#059669', '#047857', '#34D399', '#6EE7B7', '#14B8A6', '#0D9488', '#16A34A', '#15803D'] },
   { key: 'colorAmber', colors: ['#F59E0B', '#D97706', '#B45309', '#FBBF24', '#FCD34D', '#EAB308', '#CA8A04', '#A16207', '#78350F'] },
   { key: 'colorOrange', colors: ['#F97316', '#EA580C', '#C2410C', '#FB923C', '#FDBA74', '#ED8936', '#DD6B20', '#C05621', '#9A3412'] },
@@ -17,7 +18,7 @@ export const COLOR_FAMILIES = [
   { key: 'colorGray', colors: ['#64748B', '#475569', '#334155', '#94A3B8', '#71717A', '#52525B', '#3F3F46', '#78716C', '#57534E'] },
 ];
 
-export const EMOJI_DICTIONARY: Record<string, string[]> = {
+const EMOJI_DICTIONARY: Record<string, string[]> = {
   '\u{1F354}': ['comida', 'food', 'hamburguesa', 'burger', 'restaurante', 'restaurant', 'almuerzo', 'lunch', 'cena', 'dinner'],
   '\u{1F355}': ['pizza', 'pizzeria', 'italiana', 'queso'],
   '\u{2615}': ['cafe', 'coffee', 'cafeteria', 'desayuno', 'tea', 'te'],
@@ -49,7 +50,7 @@ export const EMOJI_DICTIONARY: Record<string, string[]> = {
   '\u{1F4BB}': ['tecnologia', 'tech', 'laptop', 'computadora', 'software'],
 };
 
-export const ALL_EMOJIS = Array.from(new Set(Object.keys(EMOJI_DICTIONARY)));
+const ALL_EMOJIS = Array.from(new Set(Object.keys(EMOJI_DICTIONARY)));
 
 function normalizeText(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -89,9 +90,50 @@ function saveUserEmojiMemory(keyword: string, emoji: string) {
     const memory = getUserEmojiMemory();
     memory[normKey] = emoji;
     localStorage.setItem(USER_EMOJI_MEMORY_KEY, JSON.stringify(memory));
-  } catch (error) {
-    console.error('Failed to save user emoji memory:', error);
+  } catch {
+    return;
   }
+}
+
+function suggestEmoji(name: string): string {
+  const normalizedInput = normalizeText(name);
+  if (!normalizedInput) return '\u{1F4C1}';
+
+  const words = normalizedInput.split(/\s+/).filter(Boolean);
+  const userMemory = getUserEmojiMemory();
+  if (userMemory[normalizedInput]) return userMemory[normalizedInput];
+
+  for (const word of words) {
+    if (userMemory[word]) return userMemory[word];
+  }
+
+  let bestMatchEmoji = '\u{1F4C1}';
+  let highestScore = 0;
+  for (const [emoji, keywords] of Object.entries(EMOJI_DICTIONARY)) {
+    const normalizedKeywords = keywords.map(normalizeText);
+    for (const word of words) {
+      for (const keyword of normalizedKeywords) {
+        if (word === keyword && highestScore < 4) {
+          highestScore = 4;
+          bestMatchEmoji = emoji;
+        } else if ((keyword.startsWith(word) || word.startsWith(keyword)) && highestScore < 3) {
+          highestScore = 3;
+          bestMatchEmoji = emoji;
+        } else if (word.length >= 4 && keyword.length >= 4) {
+          const distance = levenshteinDistance(word, keyword);
+          const maxLength = Math.max(word.length, keyword.length);
+          if (distance <= 2 && distance / maxLength <= 0.35 && highestScore < 2) {
+            highestScore = 2;
+            bestMatchEmoji = emoji;
+          }
+        } else if (normalizedInput.includes(keyword) && highestScore < 1) {
+          highestScore = 1;
+          bestMatchEmoji = emoji;
+        }
+      }
+    }
+  }
+  return bestMatchEmoji;
 }
 
 interface NewCategoryFormProps {
@@ -102,13 +144,21 @@ interface NewCategoryFormProps {
 
 export function NewCategoryForm({ onSuccess, categoryToEdit }: NewCategoryFormProps) {
   const { t } = useI18n();
-  const [activeColorFamily, setActiveColorFamily] = useState(() => Math.floor(Math.random() * COLOR_FAMILIES.length));
-  const [color, setColor] = useState(() => {
-    if (categoryToEdit?.color) return categoryToEdit.color;
-    const familyIdx = Math.floor(Math.random() * COLOR_FAMILIES.length);
-    const colors = COLOR_FAMILIES[familyIdx].colors;
-    return colors[Math.floor(Math.random() * colors.length)];
+  const [initialStyle] = useState(() => {
+    const matchingFamily = categoryToEdit?.color
+      ? COLOR_FAMILIES.findIndex((family) => family.colors.includes(categoryToEdit.color!))
+      : -1;
+    const familyIndex = matchingFamily >= 0
+      ? matchingFamily
+      : Math.floor(Math.random() * COLOR_FAMILIES.length);
+    const colors = COLOR_FAMILIES[familyIndex].colors;
+    return {
+      familyIndex,
+      color: categoryToEdit?.color ?? colors[Math.floor(Math.random() * colors.length)],
+    };
   });
+  const [activeColorFamily, setActiveColorFamily] = useState(initialStyle.familyIndex);
+  const [color, setColor] = useState(initialStyle.color);
   const [name, setName] = useState(categoryToEdit?.name || '');
   const [icon, setIcon] = useState(categoryToEdit?.icon || '\u{1F4C1}');
   const [isManualIcon, setIsManualIcon] = useState(!!categoryToEdit);
@@ -119,62 +169,7 @@ export function NewCategoryForm({ onSuccess, categoryToEdit }: NewCategoryFormPr
   const { categories, createCategory, updateCategory, refetch } = useCategories();
   const formRef = useRef<HTMLFormElement>(null);
 
-  useEffect(() => {
-    const familyIdx = COLOR_FAMILIES.findIndex(f => f.colors.includes(color));
-    if (familyIdx !== -1) setActiveColorFamily(familyIdx);
-  }, [color]);
-
-  useEffect(() => {
-    if (!name.trim()) {
-      setIsManualIcon(false);
-      return;
-    }
-    if (isManualIcon) return;
-
-    const normalizedInput = normalizeText(name);
-    const words = normalizedInput.split(/\s+/).filter(Boolean);
-    const userMemory = getUserEmojiMemory();
-    if (userMemory[normalizedInput]) {
-      setIcon(userMemory[normalizedInput]);
-      return;
-    }
-
-    for (const word of words) {
-      if (userMemory[word]) {
-        setIcon(userMemory[word]);
-        return;
-      }
-    }
-
-    let bestMatchEmoji: string | null = null;
-    let highestScore = 0;
-    for (const [emoji, keywords] of Object.entries(EMOJI_DICTIONARY)) {
-      const normalizedKeywords = keywords.map(normalizeText);
-      for (const word of words) {
-        for (const keyword of normalizedKeywords) {
-          if (word === keyword && highestScore < 4) {
-            highestScore = 4;
-            bestMatchEmoji = emoji;
-          } else if ((keyword.startsWith(word) || word.startsWith(keyword)) && highestScore < 3) {
-            highestScore = 3;
-            bestMatchEmoji = emoji;
-          } else if (word.length >= 4 && keyword.length >= 4) {
-            const distance = levenshteinDistance(word, keyword);
-            const maxLength = Math.max(word.length, keyword.length);
-            if (distance <= 2 && distance / maxLength <= 0.35 && highestScore < 2) {
-              highestScore = 2;
-              bestMatchEmoji = emoji;
-            }
-          } else if (normalizedInput.includes(keyword) && highestScore < 1) {
-            highestScore = 1;
-            bestMatchEmoji = emoji;
-          }
-        }
-      }
-    }
-
-    if (bestMatchEmoji) setIcon(bestMatchEmoji);
-  }, [name, isManualIcon]);
+  const effectiveIcon = isManualIcon ? icon : suggestEmoji(name);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,16 +185,15 @@ export function NewCategoryForm({ onSuccess, categoryToEdit }: NewCategoryFormPr
     setSubmitError(null);
     setIsSubmitting(true);
     try {
-      saveUserEmojiMemory(cleanName, icon);
+      saveUserEmojiMemory(cleanName, effectiveIcon);
       const catResult = categoryToEdit
-        ? await updateCategory({ id: categoryToEdit.id, data: { name: cleanName, color, icon } })
-        : await createCategory({ name: cleanName, color, icon });
+        ? await updateCategory({ id: categoryToEdit.id, data: { name: cleanName, color, icon: effectiveIcon } })
+        : await createCategory({ name: cleanName, color, icon: effectiveIcon });
       await refetch();
       onSuccess(catResult);
-    } catch (error: any) {
-      console.error('Error in category form submission:', error);
-      const apiMsg = error?.response?.data?.message || error?.response?.data?.error || error?.message;
-      setSubmitError(apiMsg || (categoryToEdit ? t('categories.updateError') : t('categories.createError')));
+    } catch (error: unknown) {
+      const fallback = categoryToEdit ? t('categories.updateError') : t('categories.createError');
+      setSubmitError(getApiErrorMessage(error, fallback));
     } finally {
       setIsSubmitting(false);
     }
@@ -209,7 +203,7 @@ export function NewCategoryForm({ onSuccess, categoryToEdit }: NewCategoryFormPr
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="mt-2 flex flex-col gap-5">
-      <Input label={t('categories.nameLabel')} placeholder={t('categories.nameExample')} value={name} onChange={(e) => { setName(e.target.value); setSubmitError(null); }} required />
+      <Input label={t('categories.nameLabel')} placeholder={t('categories.nameExample')} value={name} onChange={(e) => { const value = e.target.value; setName(value); if (!value.trim()) setIsManualIcon(false); setSubmitError(null); }} required />
 
       {submitError && <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 text-xs font-semibold">{submitError}</div>}
 
@@ -223,13 +217,13 @@ export function NewCategoryForm({ onSuccess, categoryToEdit }: NewCategoryFormPr
 
         <div className="flex items-center gap-3">
           <button type="button" className="w-14 h-14 rounded-2xl border flex items-center justify-center text-3xl hover:scale-105 transition-all shrink-0 shadow-sm" onClick={() => setShowEmojiPicker(!showEmojiPicker)} style={getCategoryBadgeStyle(color)}>
-            {icon}
+            {effectiveIcon}
           </button>
 
           <div className="flex-1 bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-2 border border-neutral-200 dark:border-neutral-700 max-h-24 overflow-y-auto">
             <div className="grid grid-cols-7 gap-1.5 items-center justify-items-center">
               {(showEmojiPicker ? ALL_EMOJIS : ALL_EMOJIS.slice(0, 14)).map(emoji => (
-                <button key={emoji} type="button" className={`text-base p-1 rounded-lg transition-transform hover:scale-125 flex items-center justify-center ${icon === emoji ? 'bg-white dark:bg-neutral-800 shadow-sm ring-2 ring-primary-500' : 'hover:bg-neutral-200/60 dark:hover:bg-neutral-800'}`} onClick={() => { setIcon(emoji); setIsManualIcon(true); if (name.trim()) saveUserEmojiMemory(name, emoji); setShowEmojiPicker(false); }}>
+                <button key={emoji} type="button" className={`text-base p-1 rounded-lg transition-transform hover:scale-125 flex items-center justify-center ${effectiveIcon === emoji ? 'bg-white dark:bg-neutral-800 shadow-sm ring-2 ring-primary-500' : 'hover:bg-neutral-200/60 dark:hover:bg-neutral-800'}`} onClick={() => { setIcon(emoji); setIsManualIcon(true); if (name.trim()) saveUserEmojiMemory(name, emoji); setShowEmojiPicker(false); }}>
                   {emoji}
                 </button>
               ))}

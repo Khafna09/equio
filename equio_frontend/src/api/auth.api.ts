@@ -1,14 +1,29 @@
-import apiClient from './apiClient';
-import type { SignInRequest, SignUpRequest, JwtResponse } from '../types/auth.types';
+import apiClient, {
+  closeSession,
+  prepareCsrfToken,
+  restoreSession,
+} from './apiClient';
+import type {
+  AuthResponse,
+  AuthUser,
+  SignInRequest,
+  SignUpRequest,
+} from '../types/auth.types';
 
 export const authApi = {
-  signIn: async (data: SignInRequest) => {
-    const response = await apiClient.post<JwtResponse>('/auth/sign-in', data);
+  async signIn(data: SignInRequest): Promise<AuthResponse> {
+    await prepareCsrfToken();
+    const response = await apiClient.post<AuthResponse>('/auth/sign-in', data);
     return response.data;
   },
 
-  signUp: async (data: SignUpRequest) => {
-    const response = await apiClient.post<any>('/auth/sign-up', data);
+  async signUp(data: SignUpRequest): Promise<AuthUser> {
+    await prepareCsrfToken();
+    const response = await apiClient.post<AuthUser>('/auth/sign-up', data);
     return response.data;
   },
+
+  restoreSession,
+  closeSession,
+  prepareCsrfToken,
 };

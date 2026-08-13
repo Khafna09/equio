@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useBudgets } from '../../hooks/useBudgets';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -15,13 +15,11 @@ import { BudgetHistoryList } from './BudgetHistoryList';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-
-
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
-
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { BudgetRequest, BudgetResponse } from '../../types/budget.types';
 interface SortableBudgetCardProps {
-  budget: any;
+  budget: BudgetResponse;
   openMenuId: number | null;
   setOpenMenuId: (id: number | null) => void;
   isAdvancedMode: boolean;
@@ -29,7 +27,6 @@ interface SortableBudgetCardProps {
   onDelete: () => void;
   onUpdateAmount: (amount: number) => Promise<void>;
 }
-
 function SortableBudgetCard({
   budget,
   openMenuId,
@@ -47,13 +44,11 @@ function SortableBudgetCard({
     transition,
     isDragging,
   } = useSortable({ id: budget.id });
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: transition ?? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
     zIndex: isDragging ? 50 : undefined,
   };
-
   return (
     <div
       ref={setNodeRef}
@@ -74,15 +69,16 @@ function SortableBudgetCard({
     </div>
   );
 }
-
-function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onUpdateBudget: any }) {
+function SavingsCard({ globalBudget, onUpdateBudget }: {
+  globalBudget?: BudgetResponse;
+  onUpdateBudget: (input: { id: number; data: BudgetRequest }) => Promise<unknown>;
+}) {
   const { currency, formatCurrency } = useCurrency();
   const { t } = useI18n();
   const [savingsType, setSavingsType] = useState<'PERCENTAGE' | 'FIXED'>(globalBudget?.savingsType || 'PERCENTAGE');
   const [savingsValue, setSavingsValue] = useState<string>(globalBudget?.savingsValue ? String(globalBudget.savingsValue) : '');
   const [enabled, setEnabled] = useState<boolean>(globalBudget?.savingsValue != null);
   const [isSaving, setIsSaving] = useState(false);
-
   const handleToggle = async () => {
     if (!globalBudget) return;
     const nextEnabled = !enabled;
@@ -98,7 +94,7 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
             isFixed: globalBudget.isFixed,
             startDate: globalBudget.startDate,
             endDate: globalBudget.endDate,
-            categoryId: globalBudget.categoryId,
+            categoryId: globalBudget.categoryId ?? undefined,
             savingsType: undefined,
             savingsValue: undefined,
           }
@@ -108,7 +104,6 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
       }
     }
   };
-
   const handleSave = async () => {
     if (!globalBudget || !savingsValue) return;
     setIsSaving(true);
@@ -121,7 +116,7 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
           isFixed: globalBudget.isFixed,
           startDate: globalBudget.startDate,
           endDate: globalBudget.endDate,
-          categoryId: globalBudget.categoryId,
+          categoryId: globalBudget.categoryId ?? undefined,
           savingsType,
           savingsValue: parseFloat(savingsValue),
         }
@@ -130,11 +125,9 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
       setIsSaving(false);
     }
   };
-
   if (!globalBudget) {
-    return null; // Ocultamos el savings card si no hay budget global
+    return null;
   }
-
   return (
     <Card className="p-5 md:p-6 flex flex-col justify-between h-full relative overflow-hidden bg-gradient-to-br from-white to-primary-50/20 dark:from-neutral-800 dark:to-primary-950/20 border-primary-100/50 dark:border-neutral-700">
       <div className="absolute top-0 right-0 w-32 h-32 bg-primary-100/30 dark:bg-primary-900/20 rounded-bl-full -mr-10 -mt-10 pointer-events-none" />
@@ -153,7 +146,6 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
           <div className={`absolute top-1 left-1 bg-white dark:bg-neutral-800 w-4 h-4 rounded-full shadow-sm transition-transform ${enabled ? 'translate-x-5' : ''}`} />
         </button>
       </div>
-
       <AnimatePresence mode="wait">
         {!enabled ? (
           <motion.div 
@@ -189,7 +181,6 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
                 {t('budgets.fixedAmount')}
               </button>
             </div>
-
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <input
@@ -204,7 +195,6 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
                   {savingsType === 'PERCENTAGE' ? '%' : currency}
                 </span>
               </div>
-
               <Button
                 variant="primary"
                 className="px-3 py-1.5 text-xs shadow-sm"
@@ -215,13 +205,12 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
                 {t('budgets.apply')}
               </Button>
             </div>
-
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400 bg-white/50 dark:bg-neutral-900/60 p-2 rounded-lg border border-neutral-100 dark:border-neutral-700">
-              {savingsType === 'PERCENTAGE' && savingsValue ? (
-                <>Reserva <b>{formatCurrency(globalBudget.totalAmount * (parseFloat(savingsValue) / 100))}</b> automáticamente.</>
-              ) : (
-                <>El monto se protegerá de tu límite de gasto general.</>
-              )}
+              {savingsType === 'PERCENTAGE' && savingsValue
+                ? t('budgets.autoReserve', {
+                    amount: formatCurrency(globalBudget.totalAmount * (parseFloat(savingsValue) / 100)),
+                  })
+                : t('budgets.protectedAmount')}
             </p>
           </motion.div>
         )}
@@ -229,7 +218,19 @@ function SavingsCard({ globalBudget, onUpdateBudget }: { globalBudget?: any, onU
     </Card>
   );
 }
-
+function loadCategoryBudgetOrder(): number[] {
+  try {
+    const stored = localStorage.getItem('equio_category_budgets_order');
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed) || !parsed.every((id) => Number.isSafeInteger(id) && id > 0)) {
+      return [];
+    }
+    return [...new Set(parsed as number[])];
+  } catch {
+    return [];
+  }
+}
 export function BudgetsPage() {
   const { budgets, isLoading, deleteBudget, closeBudget, updateBudget, createBudget } = useBudgets();
   const { formatCurrency: formatCurrencyHook } = useCurrency();
@@ -237,7 +238,7 @@ export function BudgetsPage() {
   const formatCurrency = (val: number) => formatCurrencyHook(val, { maximumFractionDigits: 0 });
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | number | null>(null);
-  const [budgetToEdit, setBudgetToEdit] = useState<any>(null);
+  const [budgetToEdit, setBudgetToEdit] = useState<Partial<BudgetResponse> | null>(null);
   const [drawerIsGlobal, setDrawerIsGlobal] = useState(true);
   
   const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(() => {
@@ -246,16 +247,14 @@ export function BudgetsPage() {
     }
     return false;
   });
-
   useEffect(() => {
     localStorage.setItem('budgetAdvancedMode', String(isAdvancedMode));
   }, [isAdvancedMode]);
   
-  // Modal states
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isSubBudgetDeleteModalOpen, setIsSubBudgetDeleteModalOpen] = useState(false);
-  const [budgetActionTarget, setBudgetActionTarget] = useState<any>(null);
+  const [budgetActionTarget, setBudgetActionTarget] = useState<BudgetResponse | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [deleteCascade, setDeleteCascade] = useState<boolean>(false);
   const dragSensors = useSensors(
@@ -263,63 +262,42 @@ export function BudgetsPage() {
       activationConstraint: { distance: 8 },
     })
   );
-
-
-  const activeBudgets = budgets.filter(b => b.status === 'ACTIVE');
+  const activeBudgets = useMemo(() => budgets.filter(b => b.status === 'ACTIVE'), [budgets]);
   const globalBudget = activeBudgets.find(b => !b.categoryId);
-  const categoryBudgets = activeBudgets.filter(b => b.categoryId);
-
-  const [orderedCategoryBudgets, setOrderedCategoryBudgets] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (categoryBudgets.length > 0) {
-      let savedOrderIds: number[] = [];
-      try {
-        const stored = localStorage.getItem('equio_category_budgets_order');
-        if (stored) savedOrderIds = JSON.parse(stored);
-      } catch (e) {
-        console.warn('Failed to parse budget order');
+  const categoryBudgets = useMemo(
+    () => activeBudgets.filter(b => b.categoryId),
+    [activeBudgets]
+  );
+  const [categoryBudgetOrder, setCategoryBudgetOrder] = useState<number[]>(loadCategoryBudgetOrder);
+  const orderedCategoryBudgets = useMemo(() => {
+    const byId = new Map(categoryBudgets.map((budget) => [budget.id, budget]));
+    const ordered: BudgetResponse[] = [];
+    for (const id of categoryBudgetOrder) {
+      const budget = byId.get(id);
+      if (budget) {
+        ordered.push(budget);
+        byId.delete(id);
       }
-
-      if (savedOrderIds.length > 0) {
-        const idMap = new Map(categoryBudgets.map(b => [b.id, b]));
-        const sorted: any[] = [];
-        savedOrderIds.forEach(id => {
-          if (idMap.has(id)) {
-            sorted.push(idMap.get(id));
-            idMap.delete(id);
-          }
-        });
-        idMap.forEach(budget => sorted.push(budget));
-        setOrderedCategoryBudgets(sorted);
-      } else {
-        setOrderedCategoryBudgets(categoryBudgets);
-      }
-    } else {
-      setOrderedCategoryBudgets([]);
     }
-  }, [budgets]);
-
-  const saveCategoryBudgetOrder = (newOrder: any[]) => {
-    setOrderedCategoryBudgets(newOrder);
+    byId.forEach((budget) => ordered.push(budget));
+    return ordered;
+  }, [categoryBudgetOrder, categoryBudgets]);
+  const saveCategoryBudgetOrder = (newOrder: BudgetResponse[]) => {
+    const orderIds = newOrder.map((budget) => budget.id);
+    setCategoryBudgetOrder(orderIds);
     try {
-      const orderIds = newOrder.map(b => b.id);
       localStorage.setItem('equio_category_budgets_order', JSON.stringify(orderIds));
-    } catch (e) {
+    } catch {
       console.warn('Failed to save budget order');
     }
   };
-
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
-
     const oldIndex = orderedCategoryBudgets.findIndex((budget) => budget.id === active.id);
     const newIndex = orderedCategoryBudgets.findIndex((budget) => budget.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
-
     saveCategoryBudgetOrder(arrayMove(orderedCategoryBudgets, oldIndex, newIndex));
   };
-
   const savingsDeduction = (!globalBudget || globalBudget.savingsValue == null) ? 0 : 
     (globalBudget.savingsType === 'PERCENTAGE' 
       ? globalBudget.totalAmount * (globalBudget.savingsValue / 100) 
@@ -327,18 +305,15 @@ export function BudgetsPage() {
   
   const effectiveGlobalLimit = globalBudget ? Math.max(0, globalBudget.totalAmount - savingsDeduction) : 0;
   
-  // Modificado para coincidir con la lógica del backend (globalRemainingAmount)
   const globalRemainingAmount = globalBudget ? Math.max(0, effectiveGlobalLimit - globalBudget.spentAmount) : 0;
-
-  // Límite asignable para sub-presupuestos: Límite efectivo del global menos la suma de sub-presupuestos ya asignados
+  // La capacidad asignable descuenta el ahorro y las asignaciones existentes.
   const totalSubBudgetsAmount = categoryBudgets.reduce((acc, b) => acc + b.totalAmount, 0);
   const assignableSubBudgetsCapacity = Math.max(0, effectiveGlobalLimit - totalSubBudgetsAmount);
   
   const globalProgress = (globalBudget && effectiveGlobalLimit > 0) 
     ? Math.min(100, Number(((globalBudget.spentAmount / effectiveGlobalLimit) * 100).toFixed(2))) 
     : 0;
-
-  const handleUpdateAmount = async (budget: any, newAmount: number) => {
+  const handleUpdateAmount = async (budget: BudgetResponse, newAmount: number) => {
     await updateBudget({
       id: budget.id,
       data: {
@@ -347,34 +322,30 @@ export function BudgetsPage() {
         isFixed: budget.isFixed,
         startDate: budget.startDate,
         endDate: budget.endDate,
-        categoryId: budget.categoryId,
-        savingsType: budget.savingsType,
-        savingsValue: budget.savingsValue
+        categoryId: budget.categoryId ?? undefined,
+        savingsType: budget.savingsType ?? undefined,
+        savingsValue: budget.savingsValue ?? undefined
       }
     });
   };
-
   const handleInlineSave = async (categoryId: number, amount: number) => {
     if (!globalBudget) return;
     
-    // Crear un sub-presupuesto vinculado
     await createBudget({
-      name: "Sub-presupuesto", // backend lo puede sobreescribir o es irrelevante
+      name: "Sub-presupuesto",
       totalAmount: amount,
-      isFixed: globalBudget.isFixed, // Hereda la modalidad
+      isFixed: globalBudget.isFixed,
       startDate: globalBudget.startDate,
       endDate: globalBudget.endDate,
       categoryId: categoryId,
       parentBudgetId: globalBudget.id
     });
   };
-
   const openDrawer = (isGlobal: boolean = true) => {
     setBudgetToEdit(null);
     setDrawerIsGlobal(isGlobal);
     setIsDrawerOpen(true);
   };
-
   const handleCloseBudget = async () => {
     if (!budgetActionTarget) return;
     setIsProcessing(true);
@@ -385,12 +356,10 @@ export function BudgetsPage() {
       setIsProcessing(false);
     }
   };
-
   const handleDeleteBudget = async () => {
     if (!budgetActionTarget) return;
     setIsProcessing(true);
     try {
-      // Pasamos cascade al mutation, forzando true si es Modo Normal
       const cascade = isAdvancedMode ? deleteCascade : true;
       await deleteBudget({ id: budgetActionTarget.id, cascade });
       setIsDeleteModalOpen(false);
@@ -398,7 +367,6 @@ export function BudgetsPage() {
       setIsProcessing(false);
     }
   };
-
   const handleDeleteSubBudget = async () => {
     if (!budgetActionTarget) return;
     setIsProcessing(true);
@@ -409,7 +377,6 @@ export function BudgetsPage() {
       setIsProcessing(false);
     }
   };
-
   if (isLoading && activeBudgets.length === 0 && budgets.length === 0) {
     return (
       <div className="flex justify-center py-20 text-neutral-500 dark:text-neutral-400 animate-pulse">
@@ -417,13 +384,12 @@ export function BudgetsPage() {
       </div>
     );
   }
-
   return (
     <div className="space-y-6 pb-12">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-neutral-900 dark:text-white tracking-tight mb-2">Tus Límites</h1>
-          <p className="text-neutral-500 dark:text-neutral-400">Administra tu {t('budgets.globalBudget')} y asigna límites por categoría.</p>
+          <h1 className="text-4xl font-bold text-neutral-900 dark:text-white tracking-tight mb-2">{t('budgets.title')}</h1>
+          <p className="text-neutral-500 dark:text-neutral-400">{t('budgets.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3 bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700">
           <span className={`text-sm font-medium ${!isAdvancedMode ? 'text-neutral-900 dark:text-white' : 'text-neutral-400'}`}>{t('budgets.normalMode')}</span>
@@ -437,13 +403,11 @@ export function BudgetsPage() {
           <span className={`text-sm font-medium ${isAdvancedMode ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400'}`}>{t('budgets.advancedMode')}</span>
         </div>
       </div>
-
       <Tabs defaultValue="dashboard" className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="dashboard">{t('budgets.dashboardTab')}</TabsTrigger>
           <TabsTrigger value="history">{t('budgets.historyTab')}</TabsTrigger>
         </TabsList>
-
         <TabsContent value="dashboard" className="space-y-8 mt-0">
           {isAdvancedMode ? (
             <div className="py-20 px-6 text-center bg-white dark:bg-neutral-800 rounded-3xl border border-neutral-100 dark:border-neutral-700 shadow-sm flex flex-col items-center justify-center min-h-[360px]">
@@ -459,7 +423,6 @@ export function BudgetsPage() {
             <EmptyBudgetState onOpenDrawer={openDrawer} />
           ) : (
             <>
-              {/* Global Section */}
               {!globalBudget && (
                 <div className="bg-primary-50 dark:bg-primary-950/30 border border-primary-100 dark:border-primary-800/60 rounded-3xl p-6 md:p-8 text-center flex flex-col items-center justify-center relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-white/40 dark:from-primary-900/20 to-transparent pointer-events-none" />
@@ -475,7 +438,6 @@ export function BudgetsPage() {
                   </Button>
                 </div>
               )}
-
               {globalBudget && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Card className="p-5 md:p-6 overflow-visible relative border-t-4 border-t-primary-500 shadow-sm shadow-primary-500/10 border-primary-100/50 dark:border-neutral-700 rounded-3xl">
@@ -575,16 +537,13 @@ export function BudgetsPage() {
                       )}
                     </div>
                   </Card>
-
                   <SavingsCard globalBudget={globalBudget} onUpdateBudget={updateBudget} />
                 </div>
               )}
-
-              {/* Categorías Section */}
               <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-neutral-600 dark:text-neutral-300 tracking-tight">Tus límites por categoría</h2>
-                  <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-2 py-1 rounded-md text-xs font-semibold">{categoryBudgets.length} Categorías</span>
+                  <h2 className="text-lg font-semibold text-neutral-600 dark:text-neutral-300 tracking-tight">{t('budgets.categoriesTitle')}</h2>
+                  <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-2 py-1 rounded-md text-xs font-semibold">{t('budgets.subcategoriesCount', { count: categoryBudgets.length })}</span>
                 </div>
                 
                 <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -594,7 +553,7 @@ export function BudgetsPage() {
                         <SortableBudgetCard
                           key={budget.id}
                           budget={budget}
-                          openMenuId={openMenuId as number}
+                          openMenuId={typeof openMenuId === 'number' ? openMenuId : null}
                           setOpenMenuId={setOpenMenuId}
                           isAdvancedMode={isAdvancedMode}
                           onEdit={() => {
@@ -608,7 +567,6 @@ export function BudgetsPage() {
                           onUpdateAmount={(amount) => handleUpdateAmount(budget, amount)}
                         />
                       ))}
-
                       {globalBudget ? (
                         <InlineBudgetForm
                           onSave={handleInlineSave}
@@ -629,7 +587,7 @@ export function BudgetsPage() {
                         <div className="border-2 border-dashed border-neutral-200 dark:border-neutral-700/50 rounded-3xl p-6 flex flex-col items-center justify-center text-center text-neutral-400 dark:text-neutral-500 min-h-[220px] bg-neutral-50/50 dark:bg-neutral-900/50">
                           <Wallet className="w-8 h-8 mb-2 opacity-50" />
                           <p className="font-medium text-sm">{t('budgets.requiresGlobal')}</p>
-                          <p className="text-xs mt-1 px-4">En el modo normal, debes crear un lmite total primero.</p>
+                          <p className="text-xs mt-1 px-4">{t('budgets.requiresGlobalHint')}</p>
                         </div>
                       )}
                     </div>
@@ -639,23 +597,20 @@ export function BudgetsPage() {
             </>
           )}
         </TabsContent>
-
         <TabsContent value="history" className="mt-0">
           <BudgetHistoryList 
             onReuse={(budget) => {
               setBudgetToEdit({
                 ...budget,
-                // Limpiamos fechas para que el usuario las ponga de nuevo
                 startDate: '',
                 endDate: '',
-                id: undefined, // Es uno nuevo
+                id: undefined,
               });
               setIsDrawerOpen(true);
             }} 
           />
         </TabsContent>
       </Tabs>
-
       <BudgetDrawer 
         isOpen={isDrawerOpen} 
         onClose={() => setIsDrawerOpen(false)}
@@ -664,26 +619,23 @@ export function BudgetsPage() {
         isAdvancedMode={isAdvancedMode}
         independentBudgets={categoryBudgets.filter(b => !b.parentBudgetId)}
       />
-
-      {/* Modal de Cierre Anticipado */}
       <Modal 
         isOpen={isCloseModalOpen} 
         onClose={() => !isProcessing && setIsCloseModalOpen(false)} 
-        title="{t('budgets.closePeriodNow')}"
+        title={t('budgets.closePeriodNow')}
       >
         <div className="mt-4">
           <div className="flex items-start gap-4 p-4 bg-orange-50 dark:bg-orange-950/30 text-orange-900 dark:text-orange-100 border border-orange-200 dark:border-orange-900/60 rounded-xl mb-6">
             <AlertTriangle className="w-6 h-6 shrink-0 mt-0.5 text-orange-600" />
             <div className="text-sm">
               <p className="font-semibold mb-1 text-base">
-                ¿Terminar este presupuesto anticipadamente?
+                {t('budgets.closeQuestion')}
               </p>
               <p className="text-orange-800 dark:text-orange-200 opacity-90">
-                Se guardará su estado actual en el <b>historial</b> y podrás consultar cómo te fue. Los sub-presupuestos vinculados también se finalizarán.
+                {t('budgets.closeDescription')}
               </p>
             </div>
           </div>
-
           <div className="flex justify-end gap-3 pt-2">
             <Button
               variant="secondary"
@@ -703,24 +655,22 @@ export function BudgetsPage() {
           </div>
         </div>
       </Modal>
-
-      {/* Modal de Peligro Crítico: {t('budgets.deletePermanently')} */}
       <Modal 
         isOpen={isDeleteModalOpen} 
         onClose={() => !isProcessing && setIsDeleteModalOpen(false)} 
-        title="{t('budgets.deletePermanently')}"
+        title={t('budgets.deletePermanently')}
       >
         <div className="mt-4">
           <div className="flex items-start gap-4 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl mb-6">
             <Trash2 className="w-6 h-6 shrink-0 mt-0.5 text-red-600" />
             <div className="text-sm text-red-900 dark:text-red-100 dark:text-red-100 w-full">
               <p className="font-semibold mb-3 text-base">
-                Esta acción no se puede deshacer. No se guardará en el historial.
+                {t('budgets.deleteWarning')}
               </p>
               
               {!isAdvancedMode ? (
                 <div className="mt-4">
-                  <p className="mb-2 opacity-90">Se borrará el {t('budgets.globalBudget')} y <b>todos los sub-presupuestos</b> asociados.</p>
+                  <p className="mb-2 opacity-90">{t('budgets.deleteGlobalCascade')}</p>
                 </div>
               ) : (
                 <div className="space-y-3 mt-4 w-full">
@@ -737,7 +687,6 @@ export function BudgetsPage() {
                       <div className="text-xs opacity-80">{t('budgets.deleteAllHint')}</div>
                     </div>
                   </label>
-
                   <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${!deleteCascade ? 'bg-white dark:bg-red-950/40 border-red-300 dark:border-red-700 shadow-sm' : 'border-transparent hover:bg-red-100/50 dark:hover:bg-red-950/40'}`}>
                     <input 
                       type="radio" 
@@ -748,14 +697,13 @@ export function BudgetsPage() {
                     />
                     <div>
                       <div className="font-medium">{t('budgets.deleteOnlyTotal')}</div>
-                      <div className="text-xs opacity-80">Las categorías se mantendrán como presupuestos independientes.</div>
+                      <div className="text-xs opacity-80">{t('budgets.deleteOnlyTotalHint')}</div>
                     </div>
                   </label>
                 </div>
               )}
             </div>
           </div>
-
           <div className="flex justify-end gap-3 pt-2 border-t border-neutral-100 dark:border-neutral-700">
             <Button
               variant="secondary"
@@ -775,12 +723,10 @@ export function BudgetsPage() {
           </div>
         </div>
       </Modal>
-
-      {/* Modal para {t('budgets.deleteSubButton')} por Categoría */}
       <Modal 
         isOpen={isSubBudgetDeleteModalOpen} 
         onClose={() => !isProcessing && setIsSubBudgetDeleteModalOpen(false)} 
-        title="{t('budgets.deleteSubButton')}"
+        title={t('budgets.deleteSubButton')}
       >
         <div className="mt-4">
           <div className="flex items-start gap-4 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl mb-6">
@@ -794,7 +740,6 @@ export function BudgetsPage() {
               </p>
             </div>
           </div>
-
           <div className="flex justify-end gap-3 pt-2 border-t border-neutral-100 dark:border-neutral-700">
             <Button
               variant="secondary"
@@ -814,7 +759,6 @@ export function BudgetsPage() {
           </div>
         </div>
       </Modal>
-
     </div>
   );
 }

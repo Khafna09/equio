@@ -13,7 +13,7 @@ import { es, enUS } from 'date-fns/locale';
 import { useSharedElementModal } from '../../hooks/useSharedElementModal';
 import { useCurrency } from '../../hooks/useCurrency';
 import { getDeterministicFallbackImage } from '../../utils/unsplash';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 export function SavingsPage() {
   const { savings, isLoading } = useSavings();
@@ -90,7 +90,6 @@ export function SavingsPage() {
         </div>
       </div>
 
-      {/* Grid de Metas */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {isLoading ? (
           <div className="col-span-full py-12 text-center text-neutral-500 dark:text-neutral-400 animate-pulse">

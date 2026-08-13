@@ -1,5 +1,7 @@
 package com.equio.backend.transactions.services;
 
+import com.equio.backend.shared.exceptions.ResourceNotFoundException;
+import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.budgets.services.BudgetService;
 import com.equio.backend.transactions.dto.requests.CreateMovementRequest;
 import com.equio.backend.transactions.dto.responses.MovementResponse;
@@ -23,20 +25,24 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
     private final BudgetService budgetService;
+    private final RlsContext rlsContext;
 
     public CreateMovementServiceImpl(MovementRepository movementRepository,
                                      UserRepository userRepository,
                                      CategoryRepository categoryRepository,
-                                     @Lazy BudgetService budgetService) {
+                                     @Lazy BudgetService budgetService,
+                                     RlsContext rlsContext) {
         this.movementRepository = movementRepository;
         this.userRepository = userRepository;
         this.categoryRepository = categoryRepository;
         this.budgetService = budgetService;
+        this.rlsContext = rlsContext;
     }
 
     @Override
     @Transactional
     public MovementResponse createMovement(Long userId, CreateMovementRequest createMovementRequest) {
+        rlsContext.setUserId(userId);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -65,6 +71,7 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     @Override
     @Transactional(readOnly = true)
     public List<MovementResponse> getAllByUserId(Long userId) {
+        rlsContext.setUserId(userId);
         return movementRepository.findByUserId(userId)
                 .stream()
                 .map(this::toResponse)
@@ -74,6 +81,7 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     @Override
     @Transactional
     public MovementResponse updateMovement(Long userId, Long movementId, CreateMovementRequest createMovementRequest) {
+        rlsContext.setUserId(userId);
         Movement movement = findMovementAndValidationOwner(userId, movementId);
         movement.setAmount(createMovementRequest.amount());
         movement.setType(createMovementRequest.type());
@@ -94,6 +102,7 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     @Override
     @Transactional
     public void deleteMovement(Long userId, Long movementId) {
+        rlsContext.setUserId(userId);
         Movement movement = findMovementAndValidationOwner(userId, movementId);
         movementRepository.delete(movement);
     }
@@ -101,6 +110,7 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     @Override
     @Transactional(readOnly = true)
     public MovementResponse getById(Long userId, Long movementId) {
+        rlsContext.setUserId(userId);
         Movement movement = findMovementAndValidationOwner(userId, movementId);
         return toResponse(movement);
     }
@@ -108,6 +118,10 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     @Override
     @Transactional(readOnly = true)
     public List<MovementResponse> getAllByFilters(Long userId, String type, Long categoryId, java.time.LocalDate startDate, java.time.LocalDate endDate) {
+        rlsContext.setUserId(userId);
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new IllegalArgumentException("Start date cannot be after end date");
+        }
         return movementRepository.findByUserIdOrderByDateDescIdDesc(userId)
                 .stream()
                 .filter(m -> type == null || m.getType().name().equalsIgnoreCase(type))
@@ -121,28 +135,27 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     @Override
     @Transactional(readOnly = true)
     public List<MovementResponse> getAllByCategory(Long userId, Long categoryId) {
+        rlsContext.setUserId(userId);
         return List.of(); 
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<MovementResponse> getAllByDateRange(Long userId, String startDate, String endDate) {
+        rlsContext.setUserId(userId);
         return List.of(); 
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<MovementResponse> getAllByType(Long userId, String type) {
+        rlsContext.setUserId(userId);
         return List.of(); 
     }
 
     private Movement findMovementAndValidationOwner(Long userId, Long movementId) {
-        Movement movement = movementRepository.findById(movementId)
-                .orElseThrow(() -> new IllegalArgumentException("Movement not found with ID: " + movementId));
-        if (!movement.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("User not owned by this movement");
-        }
-        return movement;
+        return movementRepository.findByIdAndUserId(movementId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Movement"));
     }
 
     private MovementResponse toResponse(Movement movement) {

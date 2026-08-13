@@ -1,5 +1,7 @@
 package com.equio.backend.savings.services;
 
+import com.equio.backend.shared.exceptions.ResourceNotFoundException;
+import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.budgets.entities.Budget;
 import com.equio.backend.budgets.repositories.BudgetRepository;
 import com.equio.backend.budgets.services.BudgetService;
@@ -32,22 +34,26 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     private final BudgetRepository budgetRepository;
     private final MovementRepository movementRepository;
     private final BudgetService budgetService;
+    private final RlsContext rlsContext;
 
     public SavingGoalServiceImpl(SavingGoalRepository savingGoalRepository,
                                  UserRepository userRepository,
                                  BudgetRepository budgetRepository,
                                  MovementRepository movementRepository,
-                                 @Lazy BudgetService budgetService) {
+                                 @Lazy BudgetService budgetService,
+                                 RlsContext rlsContext) {
         this.savingGoalRepository = savingGoalRepository;
         this.userRepository = userRepository;
         this.budgetRepository = budgetRepository;
         this.movementRepository = movementRepository;
         this.budgetService = budgetService;
+        this.rlsContext = rlsContext;
     }
 
     @Override
     @Transactional
     public SavingGoalResponse create(Long userId, SavingGoalRequest request) {
+        rlsContext.setUserId(userId);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
@@ -61,12 +67,8 @@ public class SavingGoalServiceImpl implements SavingGoalService {
         goal.setUser(user);
 
         if (request.budgetId() != null) {
-            Budget budget = budgetRepository.findById(request.budgetId())
-                    .orElseThrow(() -> new IllegalArgumentException("Presupuesto no encontrado con ID: " + request.budgetId()));
-            // Verificar que el presupuesto pertenece al usuario
-            if (!budget.getUser().getId().equals(userId)) {
-                throw new IllegalArgumentException("El presupuesto no pertenece al usuario");
-            }
+            Budget budget = budgetRepository.findByIdAndUserId(request.budgetId(), userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Budget"));
             goal.setBudget(budget);
         }
 
@@ -76,6 +78,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional(readOnly = true)
     public List<SavingGoalResponse> getAllByUser(Long userId) {
+        rlsContext.setUserId(userId);
         return savingGoalRepository.findByUserId(userId)
                 .stream()
                 .map(this::toResponse)
@@ -85,12 +88,14 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional(readOnly = true)
     public SavingGoalResponse getById(Long userId, Long goalId) {
+        rlsContext.setUserId(userId);
         return toResponse(findGoalAndValidateOwner(userId, goalId));
     }
 
     @Override
     @Transactional
     public SavingGoalResponse update(Long userId, Long goalId, SavingGoalRequest request) {
+        rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
 
         goal.setName(request.name());
@@ -100,11 +105,8 @@ public class SavingGoalServiceImpl implements SavingGoalService {
         goal.setImageUrl(request.imageUrl());
 
         if (request.budgetId() != null) {
-            Budget budget = budgetRepository.findById(request.budgetId())
-                    .orElseThrow(() -> new IllegalArgumentException("Presupuesto no encontrado con ID: " + request.budgetId()));
-            if (!budget.getUser().getId().equals(userId)) {
-                throw new IllegalArgumentException("El presupuesto no pertenece al usuario");
-            }
+            Budget budget = budgetRepository.findByIdAndUserId(request.budgetId(), userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Budget"));
             goal.setBudget(budget);
         } else {
             goal.setBudget(null);
@@ -120,6 +122,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional
     public SavingGoalResponse addOrWithdrawFund(Long userId, Long goalId, FundRequest request) {
+        rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
 
         String operation = request.operation().toUpperCase();
@@ -128,7 +131,6 @@ public class SavingGoalServiceImpl implements SavingGoalService {
 
         if ("ADD".equals(operation)) {
             BigDecimal newAmount = goal.getCurrentAmount().add(request.amount());
-            // Validar que no supere la meta
             if (newAmount.compareTo(goal.getTargetAmount()) > 0) {
                 throw new IllegalArgumentException(
                         "El aporte supera la meta. Máximo a aportar: " +
@@ -137,7 +139,6 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             }
             goal.setCurrentAmount(newAmount);
 
-            // Registrar movimiento de Gasto (EXPENSE) por el aporte a la meta
             Movement movement = new Movement();
             movement.setUser(user);
             movement.setAmount(request.amount());
@@ -147,12 +148,10 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             movement.setCategory(goalCategory);
             movementRepository.save(movement);
 
-            // Actualizar presupuesto si aplica
             Long catId = goalCategory != null ? goalCategory.getId() : null;
             budgetService.addExpense(userId, catId, request.amount());
 
         } else if ("WITHDRAW".equals(operation)) {
-            // Validar que haya suficiente saldo en la meta
             if (request.amount().compareTo(goal.getCurrentAmount()) > 0) {
                 throw new IllegalArgumentException(
                         "No puedes retirar más de lo ahorrado. Máximo a retirar: " + goal.getCurrentAmount()
@@ -160,7 +159,6 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             }
             goal.setCurrentAmount(goal.getCurrentAmount().subtract(request.amount()));
 
-            // Registrar movimiento de Ingreso (INCOME) por el retiro de fondos ahorrados
             Movement movement = new Movement();
             movement.setUser(user);
             movement.setAmount(request.amount());
@@ -180,19 +178,15 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional
     public void delete(Long userId, Long goalId) {
+        rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
         savingGoalRepository.delete(goal);
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────
 
     private SavingGoal findGoalAndValidateOwner(Long userId, Long goalId) {
-        SavingGoal goal = savingGoalRepository.findById(goalId)
-                .orElseThrow(() -> new IllegalArgumentException("Meta de ahorro no encontrada con ID: " + goalId));
-        if (!goal.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("La meta de ahorro no pertenece al usuario");
-        }
-        return goal;
+        return savingGoalRepository.findByIdAndUserId(goalId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Saving goal"));
     }
 
     private SavingGoalResponse toResponse(SavingGoal goal) {

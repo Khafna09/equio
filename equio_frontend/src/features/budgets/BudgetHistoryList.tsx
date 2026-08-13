@@ -6,23 +6,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, ChevronDown, ChevronUp, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { BudgetResponse } from '../../types/budget.types';
 
 interface BudgetHistoryListProps {
-  onReuse: (budget: any) => void;
+  onReuse: (budget: BudgetResponse) => void;
 }
 
 export function BudgetHistoryList({ onReuse }: BudgetHistoryListProps) {
   const { historyBudgets: rawHistory, isHistoryLoading } = useBudgets();
   const { formatCurrency: formatCurrencyHook } = useCurrency();
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const formatCurrency = (val: number) => formatCurrencyHook(val, { maximumFractionDigits: 0 });
 
-  // Filtrar y ordenar los presupuestos cerrados (más recientes primero)
   const historyBudgets = rawHistory
-    .filter(b => !b.parentBudgetId) // Raíces (globales o independientes cerrados)
+    .filter(b => !b.parentBudgetId)
     .sort((a, b) => new Date(b.endDate || b.createdAt).getTime() - new Date(a.endDate || a.createdAt).getTime());
 
   if (isHistoryLoading) {
@@ -58,7 +58,6 @@ export function BudgetHistoryList({ onReuse }: BudgetHistoryListProps) {
         
         const isSuccess = progress <= 100;
         
-        // Obtener sub-presupuestos asociados
         const childBudgets = rawHistory.filter(b => b.parentBudgetId === budget.id);
 
         const chartOption = {
@@ -90,7 +89,7 @@ export function BudgetHistoryList({ onReuse }: BudgetHistoryListProps) {
                   {isSuccess ? <CheckCircle className="w-6 h-6" /> : <XCircle className="w-6 h-6" />}
                 </div>
                 <div>
-                  <h4 className="font-semibold text-neutral-900 dark:text-white text-lg">{budget.name}</h4>
+                  <h4 className="font-semibold text-neutral-900 dark:text-white text-lg">{budget.categoryId == null ? t('budgets.globalBudget') : budget.name}</h4>
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">
                     {budget.isFixed ? t('budgets.continuousPeriod') : t('budgets.validRange', { start: budget.startDate ?? '', end: budget.endDate ?? '' })}
                   </p>
@@ -100,7 +99,7 @@ export function BudgetHistoryList({ onReuse }: BudgetHistoryListProps) {
               <div className="flex items-center gap-6">
                 <div className="text-right">
                   <div className="font-bold text-neutral-900 dark:text-white">{formatCurrency(budget.spentAmount)}</div>
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400">{language === 'en' ? 'of' : 'de'} {formatCurrency(budget.totalAmount)}</div>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400">{t('common.of')} {formatCurrency(budget.totalAmount)}</div>
                 </div>
                 <div className="text-neutral-400">
                   {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -128,12 +127,12 @@ export function BudgetHistoryList({ onReuse }: BudgetHistoryListProps) {
                         </div>
                       </div>
                       <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mt-2 text-center">
-                        {isSuccess ? 'Dentro del límite' : 'Excediste el límite'}
+                        {isSuccess ? t('budgets.withinLimit') : t('budgets.exceededLimit')}
                       </span>
                     </div>
 
                     <div className="w-full md:w-2/3">
-                      <h5 className="text-sm font-semibold text-neutral-900 dark:text-white mb-3">Desglose por Categoría</h5>
+                      <h5 className="text-sm font-semibold text-neutral-900 dark:text-white mb-3">{t('budgets.categoryBreakdown')}</h5>
                       {childBudgets.length > 0 ? (
                         <div className="space-y-3">
                           {childBudgets.map(child => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { useMovements } from '../../hooks/useMovements';
@@ -13,7 +13,8 @@ import { DateTimePickerModal } from '../../components/ui/DateTimePickerModal';
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 interface EditMovementModalProps {
   isOpen: boolean;
@@ -22,57 +23,49 @@ interface EditMovementModalProps {
   triggerRect?: TriggerRect | null;
 }
 
-export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: EditMovementModalProps) {
+function parseMovementDate(movement: MovementResponse | null): Date {
+  const rawDate = movement?.date || movement?.createdAt;
+  if (!rawDate) return new Date();
+  try {
+    const parsed = parseISO(rawDate);
+    return isValid(parsed) ? parsed : new Date();
+  } catch {
+    return new Date();
+  }
+}
+
+export function EditMovementModal(props: EditMovementModalProps) {
+  const key = `${props.isOpen ? 'open' : 'closed'}-${props.movement?.id ?? 'none'}`;
+  return <EditMovementModalContent key={key} {...props} />;
+}
+
+function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: EditMovementModalProps) {
   const { updateMovement, deleteMovement } = useMovements();
   const { categories, isLoading: isCategoriesLoading } = useCategories();
   const { symbol } = useCurrency();
   const { t, language } = useI18n();
+  const parsedInitialDate = parseMovementDate(movement);
+  const initialCategory = movement
+    ? categories.find((category) => category.id === movement.categoryId) ?? {
+        id: movement.categoryId,
+        name: movement.categoryName,
+        color: movement.categoryColor,
+        icon: movement.categoryIcon,
+      }
+    : null;
 
   const [viewMode, setViewMode] = useState<'MOVEMENT' | 'NEW_CATEGORY'>('MOVEMENT');
-  const [type, setType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState<Date>(new Date());
-  const [selectedCategory, setSelectedCategory] = useState<CategoryResponse | null>(null);
+  const [type, setType] = useState<'EXPENSE' | 'INCOME'>(movement?.type ?? 'EXPENSE');
+  const [amount, setAmount] = useState(movement ? String(movement.amount) : '');
+  const [description, setDescription] = useState(movement?.description ?? '');
+  const [date, setDate] = useState<Date>(parsedInitialDate);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryResponse | null>(initialCategory);
 
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  const [initialDate, setInitialDate] = useState<Date>(new Date());
-
-  useEffect(() => {
-    if (movement) {
-      setViewMode('MOVEMENT');
-      setType(movement.type);
-      setAmount(String(movement.amount));
-      setDescription(movement.description || '');
-
-      let parsedDate = new Date();
-      if (movement.date || movement.createdAt) {
-        const rawDateStr = movement.date || movement.createdAt;
-        try {
-          const d = parseISO(rawDateStr);
-          if (isValid(d)) parsedDate = d;
-        } catch { }
-      }
-      setDate(parsedDate);
-      setInitialDate(parsedDate);
-
-      const foundCat = categories.find(c => c.id === movement.categoryId);
-      if (foundCat) {
-        setSelectedCategory(foundCat);
-      } else {
-        setSelectedCategory({
-          id: movement.categoryId,
-          name: movement.categoryName,
-          color: movement.categoryColor,
-          icon: movement.categoryIcon
-        });
-      }
-    }
-  }, [movement, categories]);
+  const [initialDate] = useState<Date>(parsedInitialDate);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -106,8 +99,8 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
         }
       });
       handleClose();
-    } catch (error: any) {
-      setSubmitError(error?.message || t('movements.updateMovementError'));
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('movements.updateMovementError')));
     } finally {
       setIsSubmitting(false);
     }
@@ -121,8 +114,8 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
     try {
       await deleteMovement(movement.id);
       handleClose();
-    } catch (error: any) {
-      setSubmitError(error?.message || t('movements.deleteMovementError'));
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('movements.deleteMovementError')));
     } finally {
       setIsDeleting(false);
     }

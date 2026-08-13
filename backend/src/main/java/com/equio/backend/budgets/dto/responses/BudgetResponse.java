@@ -15,8 +15,8 @@ public record BudgetResponse(
         String name,
         BigDecimal totalAmount,
         BigDecimal spentAmount,
-        BigDecimal remainingAmount,       // totalAmount - spentAmount (calculado)
-        double progressPercentage,        // (spentAmount / totalAmount) * 100 (calculado)
+        BigDecimal remainingAmount,
+        double progressPercentage,
         boolean isFixed,
         LocalDate startDate,
         LocalDate endDate,
@@ -28,7 +28,7 @@ public record BudgetResponse(
         String status,
         SavingsType savingsType,
         BigDecimal savingsValue,
-        boolean isOverBudget,             // true si spentAmount >= totalAmount
+        boolean isOverBudget,
         LocalDateTime createdAt,
-        LocalDate nextStartDate           // Nueva fecha de inicio programada (BR-4.4)
+        LocalDate nextStartDate
 ) {}

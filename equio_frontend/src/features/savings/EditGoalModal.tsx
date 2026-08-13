@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -8,7 +8,7 @@ import type { SavingGoalResponse } from '../../types/saving.types';
 import { Trash2 } from 'lucide-react';
 
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface EditGoalModalProps {
   isOpen: boolean;
@@ -17,23 +17,19 @@ interface EditGoalModalProps {
   triggerRect?: TriggerRect | null;
 }
 
-export function EditGoalModal({ isOpen, onClose, goal, triggerRect }: EditGoalModalProps) {
+export function EditGoalModal(props: EditGoalModalProps) {
+  const key = `${props.isOpen ? 'open' : 'closed'}-${props.goal?.id ?? 'none'}`;
+  return <EditGoalModalContent key={key} {...props} />;
+}
+
+function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalModalProps) {
   const { updateGoal, deleteGoal } = useSavings();
   const { t } = useI18n();
-  const [name, setName] = useState('');
-  const [targetAmount, setTargetAmount] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [tag, setTag] = useState('');
+  const [name, setName] = useState(goal?.name ?? '');
+  const [targetAmount, setTargetAmount] = useState(goal ? String(goal.targetAmount) : '');
+  const [deadline, setDeadline] = useState(goal?.deadline?.substring(0, 10) ?? '');
+  const [tag, setTag] = useState(goal?.tag ?? '');
   const [isDeleting, setIsDeleting] = useState(false);
-
-  useEffect(() => {
-    if (goal && isOpen) {
-      setName(goal.name);
-      setTargetAmount(goal.targetAmount.toString());
-      setDeadline(goal.deadline ? goal.deadline.substring(0, 10) : '');
-      setTag(goal.tag || '');
-    }
-  }, [goal, isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,8 +58,8 @@ export function EditGoalModal({ isOpen, onClose, goal, triggerRect }: EditGoalMo
           ...updatedData,
           imageUrl
         });
-      } catch (error) {
-        console.error('Background goal update failed:', error);
+      } catch {
+        alert(t('savings.updateError'));
       }
     })();
   };
@@ -76,8 +72,7 @@ export function EditGoalModal({ isOpen, onClose, goal, triggerRect }: EditGoalMo
     try {
       await deleteGoal(goal.id);
       onClose();
-    } catch (error) {
-      console.error(error);
+    } catch {
       alert(t('savings.deleteError'));
     } finally {
       setIsDeleting(false);

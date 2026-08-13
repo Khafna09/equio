@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
@@ -12,21 +12,29 @@ import { NewCategoryForm } from '../categories/NewCategoryForm';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { BudgetResponse } from '../../types/budget.types';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 interface BudgetDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  budgetToEdit?: any;
+  budgetToEdit?: Partial<BudgetResponse> | null;
   defaultIsGlobal?: boolean;
   isAdvancedMode?: boolean;
-  independentBudgets?: any[];
+  independentBudgets?: BudgetResponse[];
 }
 
-export function BudgetDrawer({ 
-  isOpen, 
-  onClose, 
-  budgetToEdit, 
+export function BudgetDrawer(props: BudgetDrawerProps) {
+  const sourceKey = props.budgetToEdit?.id ?? props.budgetToEdit?.name ?? 'new';
+  const key = `${props.isOpen ? 'open' : 'closed'}-${sourceKey}-${props.defaultIsGlobal ?? true}`;
+  return <BudgetDrawerContent key={key} {...props} />;
+}
+
+function BudgetDrawerContent({
+  isOpen,
+  onClose,
+  budgetToEdit,
   defaultIsGlobal = true,
   isAdvancedMode = false,
   independentBudgets = []
@@ -36,80 +44,35 @@ export function BudgetDrawer({
   const { symbol } = useCurrency();
   const { t, language } = useI18n();
 
+  const globalBudget = budgets.find((budget) => budget.status === 'ACTIVE' && !budget.categoryId);
+  const isEditing = budgetToEdit?.id != null;
+  const periodSource = budgetToEdit ?? (!defaultIsGlobal ? globalBudget : undefined);
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const initialStartDay = periodSource?.startDate
+    ? new Date(`${periodSource.startDate}T00:00:00`).getDate() || 1
+    : 1;
+  const initialIsGlobal = globalBudget && !isEditing
+    ? false
+    : budgetToEdit
+      ? !budgetToEdit.categoryId
+      : defaultIsGlobal;
+
   const [viewMode, setViewMode] = useState<'FORM' | 'NEW_CATEGORY'>('FORM');
-  const [name, setName] = useState('');
-  const [amount, setAmount] = useState('');
-
-  // Alcance
-  const [isGlobal, setIsGlobal] = useState(true);
-  const [categoryId, setCategoryId] = useState<number | ''>('');
-
-  // Periodo
-  const [isFixed, setIsFixed] = useState(true);
-  const [startDay, setStartDay] = useState(1);
-  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [name, setName] = useState(budgetToEdit?.name ?? '');
+  const [amount, setAmount] = useState(budgetToEdit?.totalAmount ? String(budgetToEdit.totalAmount) : '');
+  const [isGlobal, setIsGlobal] = useState(initialIsGlobal);
+  const [categoryId, setCategoryId] = useState<number | ''>(budgetToEdit?.categoryId ?? '');
+  const [isFixed, setIsFixed] = useState(periodSource?.isFixed ?? true);
+  const [startDay] = useState(initialStartDay);
+  const [startDate, setStartDate] = useState(periodSource?.startDate ?? today);
+  const [endDate, setEndDate] = useState(periodSource?.endDate ?? today);
   const [catchUpOption, setCatchUpOption] = useState<'RETROACTIVE' | 'FROM_TODAY'>('RETROACTIVE');
   const [futureRenewDay, setFutureRenewDay] = useState<number | ''>('');
   const [hasInteractedWithPeriod, setHasInteractedWithPeriod] = useState(false);
-  
-  // Modos Avanzados
   const [selectedSubBudgetsToAdopt, setSelectedSubBudgetsToAdopt] = useState<number[]>([]);
   const [isIndependentCategory, setIsIndependentCategory] = useState(false);
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  const globalBudget = budgets.find(b => b.status === 'ACTIVE' && !b.categoryId);
-
-  useEffect(() => {
-    if (isOpen) {
-      setCatchUpOption('RETROACTIVE');
-      if (budgetToEdit) {
-        setName(budgetToEdit.name || '');
-        setAmount(budgetToEdit.totalAmount ? String(budgetToEdit.totalAmount) : '');
-        setIsGlobal(!budgetToEdit.categoryId);
-        setCategoryId(budgetToEdit.categoryId || '');
-        setIsFixed(budgetToEdit.isFixed);
-        
-        if (budgetToEdit.isFixed) {
-          if (budgetToEdit.startDate) {
-            const day = new Date(budgetToEdit.startDate + 'T00:00:00').getDate();
-            setStartDay(day || 1);
-          }
-        } else {
-          if (budgetToEdit.startDate) setStartDate(budgetToEdit.startDate);
-          if (budgetToEdit.endDate) setEndDate(budgetToEdit.endDate);
-        }
-      } else {
-        setName('');
-        setAmount('');
-        setIsGlobal(defaultIsGlobal);
-        setCategoryId('');
-        if (globalBudget && !defaultIsGlobal) {
-          setIsFixed(globalBudget.isFixed);
-          if (globalBudget.isFixed) {
-            if (globalBudget.startDate) {
-              const day = new Date(globalBudget.startDate + 'T00:00:00').getDate();
-              setStartDay(day || 1);
-            }
-          } else {
-            if (globalBudget.startDate) setStartDate(globalBudget.startDate);
-            if (globalBudget.endDate) setEndDate(globalBudget.endDate);
-          }
-        } else {
-          setIsFixed(true);
-          setStartDay(1);
-          setStartDate(format(new Date(), 'yyyy-MM-dd'));
-          setEndDate(format(new Date(), 'yyyy-MM-dd'));
-        }
-      }
-      setSubmitError(null);
-      setViewMode('FORM');
-      setHasInteractedWithPeriod(false);
-      setFutureRenewDay('');
-    }
-  }, [isOpen, budgetToEdit, globalBudget, defaultIsGlobal]);
 
   const handleClose = () => {
     setViewMode('FORM');
@@ -130,9 +93,9 @@ export function BudgetDrawer({
         const currentMonth = today.getMonth();
         const currentYear = today.getFullYear();
 
-        if (budgetToEdit) {
-          finalStartDate = budgetToEdit.startDate;
-          finalEndDate = budgetToEdit.endDate;
+        if (budgetToEdit?.id != null) {
+          finalStartDate = budgetToEdit.startDate ?? startDate;
+          finalEndDate = budgetToEdit.endDate ?? endDate;
           isRetroactive = false;
         } else {
           const renewDay = Number(futureRenewDay) || 1;
@@ -143,7 +106,7 @@ export function BudgetDrawer({
 
           if (effectiveCatchUpOption === 'RETROACTIVE') {
             if (!isAdvancedMode) {
-              // Modo Normal: Retroactivo desde el da elegido del mes correspondiente
+              // Modo Normal: Retroactivo desde el día elegido del mes correspondiente
               let cycleStart: Date;
               if (renewDay > todayDay) {
                  cycleStart = new Date(currentYear, currentMonth - 1, renewDay);
@@ -153,12 +116,12 @@ export function BudgetDrawer({
               const cycleEnd = new Date(cycleStart);
               cycleEnd.setMonth(cycleEnd.getMonth() + 1);
               cycleEnd.setDate(cycleEnd.getDate() - 1);
-              
+
               finalStartDate = format(cycleStart, 'yyyy-MM-dd');
               finalEndDate = format(cycleEnd, 'yyyy-MM-dd');
               isRetroactive = true;
             } else {
-              // Modo Avanzado (opcin 1): Retroactivo siempre desde el da 1 de este mes
+              // Modo Avanzado (opción 1): Retroactivo siempre desde el día 1 de este mes
               const start = new Date(currentYear, currentMonth, 1);
               const end = new Date(currentYear, currentMonth + 1, 0);
               finalStartDate = format(start, 'yyyy-MM-dd');
@@ -166,16 +129,16 @@ export function BudgetDrawer({
               isRetroactive = true;
             }
           } else {
-            // Opcin 2 / Desde Hoy: Empezar hoy en $0 y definir da de reinicio futuro
+            // Opción 2 / Desde Hoy: Empezar hoy en $0 y definir día de reinicio futuro
             finalStartDate = format(today, 'yyyy-MM-dd');
-            
+
             let nextCycleStart: Date;
             if (renewDay > todayDay) {
               nextCycleStart = new Date(currentYear, currentMonth, renewDay);
             } else {
               nextCycleStart = new Date(currentYear, currentMonth + 1, renewDay);
             }
-            
+
             const firstCycleEnd = new Date(nextCycleStart);
             firstCycleEnd.setDate(firstCycleEnd.getDate() - 1);
 
@@ -186,7 +149,7 @@ export function BudgetDrawer({
       }
 
       const data = {
-        name: isGlobal ? 'Presupuesto Global' : name,
+        name: isGlobal ? 'GLOBAL_BUDGET' : name,
         totalAmount: parseFloat(amount),
         isFixed,
         startDate: finalStartDate,
@@ -197,15 +160,14 @@ export function BudgetDrawer({
         isIndependent: (!isGlobal && isAdvancedMode) ? isIndependentCategory : false
       };
 
-      if (budgetToEdit) {
+      if (budgetToEdit?.id != null) {
         await updateBudget({ id: budgetToEdit.id, data });
       } else {
         await createBudget(data);
       }
       handleClose();
-    } catch (error: any) {
-      const backendMessage = error?.response?.data?.message;
-      setSubmitError(backendMessage || error?.message || t('budgetDrawer.saveError'));
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
       setViewMode('FORM');
     } finally {
       setIsSubmitting(false);
@@ -216,29 +178,23 @@ export function BudgetDrawer({
     e.preventDefault();
     if (!amount) return;
     if (!isGlobal && (!categoryId || !name)) return;
-    if (!isAdvancedMode && isFixed && !budgetToEdit && !futureRenewDay) return;
+    if (!isAdvancedMode && isFixed && !isEditing && !futureRenewDay) return;
     submitData();
   };
 
-  const isGlobalDisabled = !budgetToEdit && globalBudget != null;
-  const isCategoryDisabled = !budgetToEdit && !globalBudget && !isAdvancedMode;
-
-  useEffect(() => {
-    if (isGlobalDisabled && !budgetToEdit) {
-      setIsGlobal(false);
-    }
-  }, [isGlobalDisabled, budgetToEdit]);
+  const isGlobalDisabled = !isEditing && globalBudget != null;
+  const isCategoryDisabled = !isEditing && !globalBudget && !isAdvancedMode;
 
   if (typeof window === 'undefined') return null;
 
   const renderFormMode = () => (
-    <motion.form 
+    <motion.form
       key="budget-form"
       initial={{ opacity: 0, x: -16 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.2 }}
-      onSubmit={handleSubmit} 
+      onSubmit={handleSubmit}
       className="flex flex-col gap-4"
     >
       <div className="text-center">
@@ -261,14 +217,13 @@ export function BudgetDrawer({
         <div className="h-px bg-neutral-200 dark:bg-neutral-700 mt-1 mx-12 transition-colors focus-within:bg-primary-500" />
       </div>
 
-      {!budgetToEdit ? (
+      {!isEditing ? (
         <div className="space-y-4">
           {(!isCategoryDisabled || isAdvancedMode) && (
             <div>
               <label className="text-[12px] font-semibold text-neutral-400 uppercase tracking-wider mb-2 block">{t('budgetDrawer.scope')}</label>
               <div className="flex gap-2 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl relative">
-                {/* Highlight background */}
-                <motion.div 
+                <motion.div
                   className="absolute inset-y-1 rounded-lg bg-white dark:bg-neutral-700 shadow-sm"
                   layoutId="scope-highlight"
                   initial={false}
@@ -314,12 +269,12 @@ export function BudgetDrawer({
                 onSelectCategory={(cat) => setCategoryId(cat ? cat.id : '')}
                 onNewCategory={() => setViewMode('NEW_CATEGORY')}
               />
-              
+
               {isAdvancedMode && globalBudget && (
                 <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700 mt-4">
                   <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800 shadow-sm border-neutral-200 dark:border-neutral-700">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="mt-1 accent-primary-600 w-4 h-4 rounded"
                       checked={isIndependentCategory}
                       onChange={(e) => setIsIndependentCategory(e.target.checked)}
@@ -355,14 +310,14 @@ export function BudgetDrawer({
         )
       )}
 
-      {isGlobal && isAdvancedMode && !budgetToEdit && independentBudgets.length > 0 && (
+      {isGlobal && isAdvancedMode && !isEditing && independentBudgets.length > 0 && (
         <div className="space-y-4 bg-primary-50/50 dark:bg-primary-950/30 p-4 rounded-2xl border border-primary-100 dark:border-primary-800">
           <h4 className="text-sm font-semibold text-primary-900 dark:text-primary-200">{t('budgetDrawer.linkIndependent')}</h4>
           <p className="text-xs text-primary-700 dark:text-primary-300">{t('budgetDrawer.linkIndependentHint')}</p>
           <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
             {independentBudgets.map(ib => (
               <label key={ib.id} className="flex items-center gap-3 p-2 rounded-lg bg-white dark:bg-neutral-800 border border-primary-100 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-950/40 transition-colors">
-                <input 
+                <input
                   type="checkbox"
                   className="accent-primary-600 w-4 h-4 rounded"
                   checked={selectedSubBudgetsToAdopt.includes(ib.id)}
@@ -387,9 +342,9 @@ export function BudgetDrawer({
       {(isGlobal || !globalBudget || (isAdvancedMode && isIndependentCategory)) && (
         <div className="space-y-4">
           <div>
-            <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-1.5 block">{t('budgetDrawer.period')} {budgetToEdit && `(${t('budgetDrawer.notEditable')})`}</label>
-            <div className={`flex gap-2 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl relative ${budgetToEdit ? 'opacity-60 pointer-events-none' : ''}`}>
-              <motion.div 
+            <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-1.5 block">{t('budgetDrawer.period')} {isEditing && `(${t('budgetDrawer.notEditable')})`}</label>
+            <div className={`flex gap-2 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl relative ${isEditing ? 'opacity-60 pointer-events-none' : ''}`}>
+              <motion.div
                 className="absolute inset-y-1 rounded-lg bg-white dark:bg-neutral-800 shadow-sm"
                 layoutId="period-highlight"
                 initial={false}
@@ -401,7 +356,7 @@ export function BudgetDrawer({
               />
               <button
                 type="button"
-                disabled={!!budgetToEdit}
+                disabled={!!isEditing}
                 className={`relative z-10 flex-1 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors ${isFixed ? 'text-neutral-900 dark:text-white font-semibold' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-white'}`}
                 onClick={() => setIsFixed(true)}
               >
@@ -409,7 +364,7 @@ export function BudgetDrawer({
               </button>
               <button
                 type="button"
-                disabled={!!budgetToEdit}
+                disabled={!!isEditing}
                 className={`relative z-10 flex-1 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors ${!isFixed ? 'text-neutral-900 dark:text-white font-semibold' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-white'}`}
                 onClick={() => setIsFixed(false)}
               >
@@ -420,26 +375,24 @@ export function BudgetDrawer({
 
           <AnimatePresence mode="popLayout">
             {isFixed ? (
-              <motion.div 
+              <motion.div
                 key="monthly"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-3"
               >
-                {!budgetToEdit ? (
+                {!isEditing ? (
                   isAdvancedMode ? (
-                    // -------- MODO AVANZADO --------
                     <div className="space-y-3">
                       <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider block">
                         {t('budgetDrawer.startMonthlyQuestion')}
                       </label>
 
-                      {/* Opcin 1: Sincronizar desde un da pasado */}
-                      <div 
+                      <div
                         className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-                          catchUpOption === 'RETROACTIVE' 
-                            ? 'bg-purple-50/70 dark:bg-primary-950/40 border-primary-500 shadow-sm' 
+                          catchUpOption === 'RETROACTIVE'
+                            ? 'bg-purple-50/70 dark:bg-primary-950/40 border-primary-500 shadow-sm'
                             : 'bg-neutral-50 dark:bg-neutral-900/70 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
                         }`}
                         onClick={() => setCatchUpOption('RETROACTIVE')}
@@ -463,11 +416,10 @@ export function BudgetDrawer({
                         </div>
                       </div>
 
-                      {/* Opcin 2: {t('budgetDrawer.startToday')} */}
-                      <div 
+                      <div
                         className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-                          catchUpOption === 'FROM_TODAY' 
-                            ? 'bg-purple-50/70 dark:bg-primary-950/40 border-primary-500 shadow-sm' 
+                          catchUpOption === 'FROM_TODAY'
+                            ? 'bg-purple-50/70 dark:bg-primary-950/40 border-primary-500 shadow-sm'
                             : 'bg-neutral-50 dark:bg-neutral-900/70 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
                         }`}
                         onClick={() => setCatchUpOption('FROM_TODAY')}
@@ -489,7 +441,7 @@ export function BudgetDrawer({
                             </p>
 
                             {catchUpOption === 'FROM_TODAY' && (
-                              <motion.div 
+                              <motion.div
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: 'auto' }}
                                 className="pt-3 flex items-center justify-between border-t border-purple-200/60"
@@ -510,7 +462,6 @@ export function BudgetDrawer({
                       </div>
                     </div>
                   ) : (
-                    // -------- MODO NORMAL (Revelacin Progresiva) --------
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
@@ -530,7 +481,7 @@ export function BudgetDrawer({
 
                       <AnimatePresence mode="popLayout">
                         {hasInteractedWithPeriod && futureRenewDay !== '' && futureRenewDay !== new Date().getDate() && (
-                          <motion.div 
+                          <motion.div
                             initial={{ opacity: 0, y: -8, height: 0 }}
                             animate={{ opacity: 1, y: 0, height: 'auto' }}
                             exit={{ opacity: 0, y: -8, height: 0 }}
@@ -540,23 +491,21 @@ export function BudgetDrawer({
                             <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
                               {t('budgetDrawer.measureStart')}
                             </label>
-                            
-                            {/* Tarjeta A */}
-                            <motion.div 
+
+                            <motion.div
                               whileTap={{ scale: 0.98 }}
                               className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                                catchUpOption === 'RETROACTIVE' 
-                                  ? 'bg-primary-50/30 dark:bg-primary-950/40 border-primary-600 shadow-[0_2px_8px_rgba(108,92,231,0.08)] opacity-100' 
+                                catchUpOption === 'RETROACTIVE'
+                                  ? 'bg-primary-50/30 dark:bg-primary-950/40 border-primary-600 shadow-[0_2px_8px_rgba(108,92,231,0.08)] opacity-100'
                                   : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:border-neutral-300 opacity-60'
                               }`}
                               onClick={() => setCatchUpOption('RETROACTIVE')}
                             >
                               <div className="flex items-start gap-2.5">
-                                {/* Custom Radio Circle */}
                                 <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
                                   catchUpOption === 'RETROACTIVE' ? 'border-primary-600' : 'border-neutral-300'
                                 }`}>
-                                  <motion.div 
+                                  <motion.div
                                     initial={false}
                                     animate={{ scale: catchUpOption === 'RETROACTIVE' ? 1 : 0 }}
                                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
@@ -588,22 +537,20 @@ export function BudgetDrawer({
                               </div>
                             </motion.div>
 
-                            {/* Tarjeta B */}
-                            <motion.div 
+                            <motion.div
                               whileTap={{ scale: 0.98 }}
                               className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                                catchUpOption === 'FROM_TODAY' 
-                                  ? 'bg-primary-50/30 dark:bg-primary-950/40 border-primary-600 shadow-[0_2px_8px_rgba(108,92,231,0.08)] opacity-100' 
+                                catchUpOption === 'FROM_TODAY'
+                                  ? 'bg-primary-50/30 dark:bg-primary-950/40 border-primary-600 shadow-[0_2px_8px_rgba(108,92,231,0.08)] opacity-100'
                                   : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:border-neutral-300 opacity-60'
                               }`}
                               onClick={() => setCatchUpOption('FROM_TODAY')}
                             >
                               <div className="flex items-start gap-2.5">
-                                {/* Custom Radio Circle */}
                                 <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
                                   catchUpOption === 'FROM_TODAY' ? 'border-primary-600' : 'border-neutral-300'
                                 }`}>
-                                  <motion.div 
+                                  <motion.div
                                     initial={false}
                                     animate={{ scale: catchUpOption === 'FROM_TODAY' ? 1 : 0 }}
                                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
@@ -618,20 +565,20 @@ export function BudgetDrawer({
                                     {(() => {
                                       const today = new Date();
                                       const targetDay = Number(futureRenewDay) || 1;
-                                      
+
                                       let nextCycleStart: Date;
                                       if (targetDay > today.getDate()) {
                                         nextCycleStart = new Date(today.getFullYear(), today.getMonth(), targetDay);
                                       } else {
                                         nextCycleStart = new Date(today.getFullYear(), today.getMonth() + 1, targetDay);
                                       }
-                                      
+
                                       const firstCycleEnd = new Date(nextCycleStart);
                                       firstCycleEnd.setDate(firstCycleEnd.getDate() - 1);
-                                      
+
                                       const endMonthName = format(firstCycleEnd, 'MMMM', { locale: language === 'en' ? enUS : es });
                                       const capitalizedEndMonth = endMonthName.charAt(0).toUpperCase() + endMonthName.slice(1);
-                                      
+
                                       return t('budgetDrawer.startFromZeroHint', { day: firstCycleEnd.getDate(), month: capitalizedEndMonth });
                                     })()}
                                   </p>
@@ -649,7 +596,7 @@ export function BudgetDrawer({
                       <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{t('budgetDrawer.startDayLocked')}</span>
                       <span className="text-xs text-neutral-400">{t('budgetDrawer.activeCycle')}</span>
                     </div>
-                    <select 
+                    <select
                       className="px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm font-medium focus:outline-none shadow-sm cursor-not-allowed"
                       value={startDay}
                       disabled
@@ -660,7 +607,7 @@ export function BudgetDrawer({
                 )}
               </motion.div>
             ) : (
-              <motion.div 
+              <motion.div
                 key="dates"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -703,9 +650,9 @@ export function BudgetDrawer({
           variant="primary"
           className="w-full shadow-[0_0_20px_-5px_rgba(124,58,237,0.4)]"
           isLoading={isSubmitting}
-          disabled={!amount || (!isGlobal && (!categoryId || !name)) || (!isAdvancedMode && isFixed && !budgetToEdit && !futureRenewDay)}
+          disabled={!amount || (!isGlobal && (!categoryId || !name)) || (!isAdvancedMode && isFixed && !isEditing && !futureRenewDay)}
         >
-          {budgetToEdit ? t('common.saveChanges') : t('budgetDrawer.createBudget')}
+          {isEditing ? t('common.saveChanges') : t('budgetDrawer.createBudget')}
         </Button>
       </div>
     </motion.form>
@@ -731,8 +678,8 @@ export function BudgetDrawer({
           >
             <div className="flex items-center justify-between px-6 py-3.5 border-b border-neutral-100 dark:border-neutral-700/60 flex-shrink-0">
               <h2 className="text-[18px] font-bold text-neutral-900 dark:text-white">
-                {viewMode === 'FORM' 
-                  ? (budgetToEdit ? t('budgetDrawer.editBudget') : t('budgetDrawer.newBudget')) 
+                {viewMode === 'FORM'
+                  ? (isEditing ? t('budgetDrawer.editBudget') : t('budgetDrawer.newBudget'))
                   : t('budgetDrawer.newCategory')}
               </h2>
               <button

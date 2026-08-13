@@ -13,17 +13,18 @@ import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/
 import { ShinyButton } from '../../components/ui/shiny-button';
 import { parseISO, isValid, format } from 'date-fns';
 import { SplitText } from '../../components/reactbits/split-text';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/authContextValue';
 import { cn } from '../../utils/classNames';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { MovementResponse } from '../../types/movement.types';
 
 
-function formatMovementSubtitle(mov: any) {
-  const note = mov.description?.trim();
-  const hasNote = Boolean(note);
+function formatMovementSubtitle(mov: MovementResponse) {
+  const note = mov.description?.trim() ?? '';
+  const hasNote = note.length > 0;
 
   let timeStr = '';
   const dateStr = mov.date || mov.createdAt;
@@ -33,7 +34,9 @@ function formatMovementSubtitle(mov: any) {
       if (isValid(d)) {
         timeStr = format(d, 'HH:mm');
       }
-    } catch { }
+    } catch {
+      timeStr = '';
+    }
     if (!timeStr && typeof dateStr === 'string') {
       const match = dateStr.match(/T(\d{2}:\d{2})/);
       if (match) timeStr = match[1];
@@ -161,7 +164,6 @@ export function DashboardPage() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useGSAP(() => {
-    // Mount animation for all dashboard cards
     if (containerRef.current) {
       const mainCards = containerRef.current.querySelectorAll('.dashboard-card');
       gsap.fromTo(
@@ -236,7 +238,6 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Main Stats Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
         {isLoadingSummary ?(
           <>

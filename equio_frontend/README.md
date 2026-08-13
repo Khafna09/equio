@@ -1,57 +1,137 @@
 # Equio Frontend
 
-Aplicacion web de Equio para gestionar ingresos, gastos, categorias, presupuestos, historial, metas de ahorro y preferencias de perfil. Esta construida con React, TypeScript, Vite, React Router, TanStack Query y Tailwind CSS.
+Aplicación web de finanzas personales construida con React 19, TypeScript, Vite, TanStack Query, Axios y Tailwind CSS. Incluye dashboard, movimientos, categorías, presupuestos reordenables, metas de ahorro y configuración bilingüe español/inglés.
+
+La auditoría y las decisiones de seguridad del sistema completo están en [SECURITY_AUDIT.md](../SECURITY_AUDIT.md).
 
 ## Requisitos
 
-- Node.js compatible con Vite
-- npm
-- Backend de Equio disponible
+- Node.js 24.
+- npm.
+- Backend de Equio disponible.
 
-## Configuracion
+## Inicio rápido
 
-Crea o actualiza un archivo `.env` local usando `.env.example` como referencia:
+1. Copia `.env.example` como `.env`.
+2. Define únicamente la URL pública de la API:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8081/api/v1
-VITE_UNSPLASH_ACCESS_KEY=
 ```
 
-`VITE_UNSPLASH_ACCESS_KEY` es opcional. Si no se define, las metas de ahorro se crean sin imagen remota.
+3. Instala exactamente las versiones bloqueadas e inicia Vite:
+
+```powershell
+npm ci
+npm run dev
+```
+
+La aplicación queda disponible normalmente en `http://localhost:5173`.
+
+No agregues contraseñas, tokens privados ni claves de proveedores a variables `VITE_*`: Vite las incorpora al bundle y quedan visibles para cualquier usuario. La clave de Unsplash vive en el backend.
 
 ## Scripts
 
-```bash
-npm install
-npm run dev
-npm run build
-npm run lint
-npm run preview
-```
+| Comando | Uso |
+| --- | --- |
+| `npm run dev` | Desarrollo con recarga en caliente |
+| `npm run lint` | ESLint para TypeScript, React y hooks |
+| `npm run check:i18n` | Paridad de cat?logos y claves usadas |
+| `npm run build` | Type-check y bundle de producción |
+| `npm run preview` | Previsualiza `dist` con las cabeceras locales |
+| `npm audit --audit-level=high` | Falla ante vulnerabilidades altas o críticas |
 
-El servidor de desarrollo usa Vite y normalmente queda en `http://localhost:5173`.
+El build de producción está minificado y no publica source maps.
 
 ## Estructura
 
-- `src/api`: clientes HTTP por dominio y configuracion central de Axios.
-- `src/components`: componentes reutilizables de layout, UI y efectos visuales.
-- `src/contexts`: estado global de autenticacion.
-- `src/features`: pantallas y flujos de producto por modulo (`auth`, `dashboard`, `history`, `budgets`, `categories`, `movements`, `savings`, `settings`).
-- `src/hooks`: hooks de datos y estado compartido.
-- `src/types`: contratos TypeScript de requests/responses.
-- `src/utils` y `src/lib`: utilidades transversales.
+- `src/api`: cliente Axios, endpoints por dominio y almacén de access token en memoria.
+- `src/components/layout`: navegación, rutas protegidas y layout.
+- `src/components/ui`: controles reutilizables.
+- `src/contexts`: proveedor de autenticación.
+- `src/features`: pantallas y flujos agrupados por dominio.
+- `src/hooks`: consultas y mutaciones de TanStack Query.
+- `src/i18n`: contexto y catálogo completo español/inglés.
+- `src/types`: contratos de requests y responses.
+- `src/utils`: errores seguros, moneda, estilos y proxy de imágenes.
+- `src/features/errors`: página 404.
 
-## Seguridad y buenas practicas
+La lógica de dominio permanece en `api` y `hooks`; los componentes se concentran en presentación e interacción.
 
-- El token JWT se adjunta desde el cliente Axios central.
-- Los 401 limpian la sesion local y redirigen a login.
-- La URL de API y llaves de servicios externos se configuran por entorno.
-- `.env` esta ignorado por Git; comparte solo `.env.example`.
-- Mantener la logica de datos en `api`/`hooks` y las pantallas en `features` ayuda a reducir acoplamiento.
+## Autenticación y sesión
 
-## Verificacion
+- El access token se mantiene en una variable de módulo; no se escribe en `localStorage` ni `sessionStorage`.
+- El refresh token nunca es accesible desde JavaScript: el backend lo entrega como cookie `HttpOnly`.
+- Axios usa `withCredentials` y envía `X-XSRF-TOKEN` para registro, login, refresh y logout.
+- Un único refresh puede ejecutarse a la vez; las solicitudes que reciben 401 esperan esa operación y se reintentan una vez.
+- Al cargar la aplicación se restaura la sesión mediante refresh. Los antiguos valores `token` y `user` se eliminan de `localStorage`.
+- Logout revoca la sesión en el servidor y limpia el estado en memoria.
+- Los mensajes provenientes de Axios se inspeccionan antes de mostrarse y nunca renderizan HTML arbitrario.
 
-```bash
-npm run lint
-npm run build
+`localStorage` se limita a preferencias no sensibles: idioma, tema, modo de presupuesto, orden de tarjetas y memoria de emoji. El orden se valida como una lista de enteros positivos antes de utilizarlo. No se usa `sessionStorage`.
+
+## Internacionalización y UTF-8
+
+El selector de idioma de Settings persiste `es` o `en` en el perfil y en la preferencia local. Los componentes, vistas, modales, estados vacíos, errores y etiquetas usan `t(...)` desde `src/i18n/translations.ts`.
+
+Los archivos fuente son UTF-8 y `index.html` declara `charset=UTF-8`. Al añadir una cadena visible:
+
+1. Crea la misma clave en `es` y `en`.
+2. Usa `t('ruta.clave')`.
+3. Ejecuta lint y build.
+4. Comprueba que no aparezcan caracteres de reemplazo o texto mal codificado.
+
+`ErrorBoundary` contiene el único fallback bilingüe directo porque puede renderizar cuando el proveedor de i18n no está disponible.
+
+## Seguridad del navegador
+
+`index.html` define una CSP sin `unsafe-eval`, limita imágenes a Equio/data/Unsplash y calcula `connect-src` desde `VITE_API_BASE_URL`. `vite.config.ts` añade `nosniff`, Referrer Policy, Permissions Policy y COOP durante desarrollo/preview.
+
+La directiva `style-src 'unsafe-inline'` se mantiene por los estilos en línea que requieren las bibliotecas visuales actuales. No debe ampliarse a scripts.
+
+En producción el servidor/CDN debe enviar estas políticas como cabeceras HTTP, no depender solo de la etiqueta meta. También debe:
+
+- Servir exclusivamente por HTTPS.
+- Añadir HSTS tras confirmar que todo el dominio funciona por HTTPS.
+- Enviar CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` y `Cross-Origin-Opener-Policy`.
+- Evitar cachear HTML autenticado de forma compartida.
+- Redirigir rutas SPA a `index.html`; React mostrará la vista 404 para rutas desconocidas.
+
+Ejemplo mínimo de CSP de producción, ajustando el origen de API:
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://images.unsplash.com; connect-src 'self' https://api.equio.example; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 ```
+
+## Datos y caché
+
+TanStack Query conserva únicamente datos de la sesión activa en memoria. Al cerrar sesión se limpia su uso desde el contexto y se invalida la autenticación. Evita persistir el Query Client o respuestas financieras en almacenamiento del navegador.
+
+Los IDs enviados al backend no se consideran autorización. El backend vuelve a comprobar el propietario y RLS aplica el aislamiento final.
+
+## Presupuestos y metas
+
+Las tarjetas de subpresupuestos utilizan `@dnd-kit` para reordenamiento fluido por mouse y teclado; el orden local contiene solo IDs validados. La grilla presenta hasta tres tarjetas por fila y no encierra la primera fila en un scroll horizontal.
+
+Las imágenes de metas se solicitan a `/api/v1/images/search`. El navegador nunca llama a Unsplash con una credencial. El dashboard selecciona iconos según la temática de cada meta.
+
+## Desarrollo
+
+- Mantén formularios controlados y límites equivalentes a los DTO del backend.
+- No uses `dangerouslySetInnerHTML` con contenido remoto o del usuario.
+- No almacenes secretos ni tokens en Web Storage.
+- Toda cadena visible debe existir en ambos idiomas.
+- Conserva comentarios solo cuando expliquen una decisión no evidente.
+- Usa el cliente `apiClient`; no crees instancias Axios que omitan cookies, CSRF o refresh.
+
+## Verificación
+
+```powershell
+npm ci
+npm run lint
+npm run check:i18n
+npm run build
+npm audit --audit-level=high
+```
+
+Antes de publicar, prueba login, refresh, logout, cambio de idioma, rutas 404, presupuestos por drag and drop e imágenes de metas contra un backend con perfil de producción equivalente.

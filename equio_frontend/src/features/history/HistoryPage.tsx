@@ -13,6 +13,30 @@ import { DndContext, useDraggable, useDroppable, DragOverlay, useSensor, useSens
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { ProgressiveBlur } from '../../components/magicui/progressive-blur';
 import { StaggeredEntry } from '../../components/ui/StaggeredEntry';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card';
+import { useSharedElementModal } from '../../hooks/useSharedElementModal';
+import { useCurrency } from '../../hooks/useCurrency';
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { MovementResponse } from '../../types/movement.types';
+
+type MainMovementFilter = 'ALL' | 'INCOME' | 'EXPENSE';
+type HistoryFilterType = MainMovementFilter | 'CATEGORY';
+
+interface HistoryColumn {
+  id: string;
+  type: HistoryFilterType;
+  label: string;
+  categoryId?: number;
+}
+
+interface DragFilterData {
+  label: string;
+  type: HistoryFilterType;
+}
+
+function isHistoryFilterType(value: unknown): value is HistoryFilterType {
+  return value === 'ALL' || value === 'INCOME' || value === 'EXPENSE' || value === 'CATEGORY';
+}
 
 function CalendarWidget({
   movements,
@@ -20,11 +44,12 @@ function CalendarWidget({
   onSelectDate,
   language
 }: {
-  movements: any[];
+  movements: MovementResponse[];
   selectedDate: string | null;
   onSelectDate: (dateStr: string | null) => void;
   language: 'es' | 'en';
 }) {
+  const { t } = useI18n();
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const movementDates = useMemo(() => {
@@ -119,7 +144,7 @@ function CalendarWidget({
           onClick={() => onSelectDate(null)}
           className="w-full text-xs text-primary-600 dark:text-primary-400 font-medium hover:underline flex items-center justify-center gap-1 pt-1 border-t border-neutral-100 dark:border-neutral-700"
         >
-          <RotateCcw className="w-3 h-3" /> {language === 'en' ? 'View all days' : 'Ver todos los d?as'}
+          <RotateCcw className="w-3 h-3" /> {t('history.viewAllDays')}
         </button>
       )}
     </Card>
@@ -175,11 +200,9 @@ function DraggableFilter({
   );
 }
 
-import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card';
-
-function formatMovementSubtitle(mov: any) {
-  const note = mov.description?.trim();
-  const hasNote = Boolean(note);
+function formatMovementSubtitle(mov: MovementResponse) {
+  const note = mov.description?.trim() ?? '';
+  const hasNote = note.length > 0;
 
   let timeStr = '';
   const dateStr = mov.date || mov.createdAt;
@@ -189,7 +212,9 @@ function formatMovementSubtitle(mov: any) {
       if (isValid(d)) {
         timeStr = format(d, 'HH:mm');
       }
-    } catch { }
+    } catch {
+      timeStr = '';
+    }
     if (!timeStr && typeof dateStr === 'string') {
       const match = dateStr.match(/T(\d{2}:\d{2})/);
       if (match) timeStr = match[1];
@@ -213,10 +238,6 @@ function formatMovementSubtitle(mov: any) {
   };
 }
 
-import { useSharedElementModal } from '../../hooks/useSharedElementModal';
-
-import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
 
 function MovementList({
   movements,
@@ -226,23 +247,23 @@ function MovementList({
   isRemovable,
   onMovementClick
 }: {
-  movements: any[];
+  movements: MovementResponse[];
   title?: string;
   headerContent?: React.ReactNode;
   onClose?: () => void;
   isRemovable?: boolean;
-  onMovementClick: (movement: any, e: React.MouseEvent<HTMLButtonElement>) => void;
+  onMovementClick: (movement: MovementResponse, e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const { formatCurrency } = useCurrency();
   const { t, language } = useI18n();
 
   const groupedMovements = useMemo(() => {
-    return movements.reduce((groups, mov) => {
+    return movements.reduce<Record<string, MovementResponse[]>>((groups, mov) => {
       const date = mov.date ? mov.date.substring(0, 10) : (mov.createdAt ? mov.createdAt.substring(0, 10) : '');
       if (!groups[date]) groups[date] = [];
       groups[date].push(mov);
       return groups;
-    }, {} as Record<string, typeof movements>);
+    }, {});
   }, [movements]);
 
   const sortedDateGroups = useMemo(() => {
@@ -250,8 +271,8 @@ function MovementList({
       .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
       .map(([date, movs]) => [
         date,
-        [...(movs as any[])].sort((a, b) => (b.id || 0) - (a.id || 0))
-      ] as [string, any[]]);
+        [...movs].sort((a, b) => b.id - a.id)
+      ] as [string, MovementResponse[]]);
   }, [groupedMovements]);
 
   const getDateLabel = (dateStr: string) => {
@@ -370,14 +391,14 @@ export function HistoryPage() {
   );
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [columns, setColumns] = useState<any[]>([{ id: 'col-main', type: 'ALL', label: t('common.all') }]);
-  const [mainColOverride, setMainColOverride] = useState<'ALL' | 'INCOME' | 'EXPENSE' | null>(null);
+  const [columns, setColumns] = useState<HistoryColumn[]>([{ id: 'col-main', type: 'ALL', label: t('common.all') }]);
+  const [mainColOverride, setMainColOverride] = useState<MainMovementFilter | null>(null);
 
   const columnsContainerRef = useRef<HTMLDivElement>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const [activeDragData, setActiveDragData] = useState<any>(null);
+  const [activeDragData, setActiveDragData] = useState<DragFilterData | null>(null);
 
-  const [selectedMovement, setSelectedMovement] = useState<any>(null);
+  const [selectedMovement, setSelectedMovement] = useState<MovementResponse | null>(null);
 
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: 'board' });
 
@@ -391,7 +412,7 @@ export function HistoryPage() {
     return 'ALL';
   }, [mainColOverride, hasExpenseCol, hasIncomeCol]);
 
-  const addColumn = (id: string, type: string, label: string) => {
+  const addColumn = (id: string, type: HistoryFilterType, label: string) => {
     if (columns.length >= 4) return;
     if (columns.some(c => c.id === id)) return;
 
@@ -406,8 +427,13 @@ export function HistoryPage() {
   };
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveDragId(event.active.id as string);
-    setActiveDragData(event.active.data.current);
+    setActiveDragId(String(event.active.id));
+    const data = event.active.data.current;
+    setActiveDragData(
+      typeof data?.label === 'string' && isHistoryFilterType(data.type)
+        ? { label: data.label, type: data.type }
+        : null
+    );
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -418,12 +444,14 @@ export function HistoryPage() {
     const isOverBoard = Boolean(over && (over.id === 'board' || over.id.toString().startsWith('col-')));
     const isDraggedRight = delta.x > 80;
 
-    if ((isOverBoard || isDraggedRight) && columns.length < 4) {
-      addColumn(
-        active.id as string,
-        active.data.current?.type,
-        active.data.current?.label
-      );
+    const data = active.data.current;
+    if (
+      (isOverBoard || isDraggedRight)
+      && columns.length < 4
+      && typeof data?.label === 'string'
+      && isHistoryFilterType(data.type)
+    ) {
+      addColumn(String(active.id), data.type, data.label);
     }
   };
 
@@ -456,7 +484,7 @@ export function HistoryPage() {
     setColumns(prev => prev.filter(c => c.id !== id));
   };
 
-  const getMovementsForColumn = (col: any) => {
+  const getMovementsForColumn = (col: HistoryColumn) => {
     let list = movements;
 
     if (selectedDate) {
@@ -483,13 +511,13 @@ export function HistoryPage() {
     } catch {
       return selectedDate;
     }
-  }, [selectedDate]);
+  }, [language, selectedDate]);
 
-  const mainSwitchOptions = useMemo(() => {
+  const mainSwitchOptions = useMemo<Array<{ id: MainMovementFilter; label: string }>>(() => {
     if (hasExpenseCol) return [{ id: 'ALL', label: t('common.all') }, { id: 'INCOME', label: t('common.income') }];
     if (hasIncomeCol) return [{ id: 'ALL', label: t('common.all') }, { id: 'EXPENSE', label: t('common.expenses') }];
     return [{ id: 'ALL', label: t('common.all') }, { id: 'INCOME', label: t('common.income') }, { id: 'EXPENSE', label: t('common.expenses') }];
-  }, [hasExpenseCol, hasIncomeCol]);
+  }, [hasExpenseCol, hasIncomeCol, t]);
 
   return (
     <DndContext
@@ -552,7 +580,7 @@ export function HistoryPage() {
               </div>
 
               <div className="border-t border-neutral-100 dark:border-neutral-700/60 my-3 pt-3">
-                <span className="text-xs text-neutral-400 font-semibold uppercase block mb-2">Categorías</span>
+                <span className="text-xs text-neutral-400 font-semibold uppercase block mb-2">{t('history.categories')}</span>
                 <div className="max-h-[220px] overflow-y-auto pr-1 flex flex-wrap gap-1.5">
                   {categories.map(cat => (
                     <DraggableFilter
@@ -587,7 +615,7 @@ export function HistoryPage() {
                           <button
                             key={opt.id}
                             type="button"
-                            onClick={() => setMainColOverride(opt.id as any)}
+                            onClick={() => setMainColOverride(opt.id)}
                             className={`px-3 py-1 rounded-lg transition-colors ${effectiveMainType === opt.id ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'}`}
                           >
                             {opt.label}

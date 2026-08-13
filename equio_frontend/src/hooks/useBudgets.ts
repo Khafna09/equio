@@ -1,8 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../utils/apiError';
 import { budgetsApi } from '../api/budgets.api';
 import type { BudgetResponse, BudgetRequest } from '../types/budget.types';
+import { useI18n } from '../i18n/i18nContextValue';
 
 export function useBudgets() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   const {
@@ -68,13 +71,13 @@ export function useBudgets() {
     }
   });
 
-  return { 
-    budgets, 
+  return {
+    budgets,
     historyBudgets,
-    isLoading, 
+    isLoading,
     isHistoryLoading,
-    error: error ? (error as any).response?.data?.message || 'Error al cargar presupuestos' : null, 
-    refetch, 
+    error: error ? getApiErrorMessage(error, t('common.loadBudgetsError')) : null,
+    refetch,
     refetchHistory,
     createBudget: createMutation.mutateAsync,
     updateBudget: updateMutation.mutateAsync,
@@ -82,4 +85,3 @@ export function useBudgets() {
     closeBudget: closeMutation.mutateAsync
   };
 }
-

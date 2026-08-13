@@ -1,38 +1,51 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/authContextValue';
 import { useProfile } from '../../hooks/useProfile';
 import { AnimatedThemeToggler } from '../../components/ui/animated-theme-toggler';
 import { CategoriesManager } from '../categories/CategoriesManager';
 import { Save, User, LayoutGrid } from 'lucide-react';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { ProfileRequest, ProfileResponse } from '../../api/profile.api';
 
 export function SettingsPage() {
+  const profileState = useProfile();
+  const { t } = useI18n();
+  if (!profileState.profile) {
+    return <div className="py-12 text-center text-neutral-500">{t('common.loading')}</div>;
+  }
+
+  const profile = profileState.profile;
+  const key = [profile.id, profile.firstName, profile.lastName, profile.language, profile.currency, profile.theme].join(':');
+  return (
+    <SettingsPageContent
+      key={key}
+      profile={profile}
+      updateProfile={profileState.updateProfile}
+      isUpdating={profileState.isUpdating}
+    />
+  );
+}
+
+interface SettingsPageContentProps {
+  profile: ProfileResponse;
+  updateProfile: (data: ProfileRequest) => Promise<ProfileResponse>;
+  isUpdating: boolean;
+}
+
+function SettingsPageContent({ profile, updateProfile, isUpdating }: SettingsPageContentProps) {
   const { user } = useAuth();
-  const { profile, updateProfile, isUpdating } = useProfile();
   const { t, setLanguage: setAppLanguage } = useI18n();
-
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [language, setLanguage] = useState('es');
-  const [currency, setCurrency] = useState('PEN');
-  const [theme, setTheme] = useState('light');
+  const [firstName, setFirstName] = useState(profile.firstName || '');
+  const [lastName, setLastName] = useState(profile.lastName || '');
+  const [language, setLanguage] = useState(profile.language || 'es');
+  const [currency, setCurrency] = useState(profile.currency || 'PEN');
+  const [theme, setTheme] = useState(profile.theme || 'light');
   const [savedSuccess, setSavedSuccess] = useState(false);
-
-  useEffect(() => {
-    if (profile) {
-      setFirstName(profile.firstName || '');
-      setLastName(profile.lastName || '');
-      setLanguage(profile.language || 'es');
-      setCurrency(profile.currency || 'PEN');
-      setTheme(profile.theme || 'light');
-      document.documentElement.classList.toggle('dark', profile.theme === 'dark');
-    }
-  }, [profile]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,8 +63,8 @@ export function SettingsPage() {
     document.documentElement.classList.toggle('dark', newTheme === 'dark');
     try {
       await updateProfile({ firstName, lastName, language, currency, theme: newTheme });
-    } catch (error) {
-      console.error('Error saving theme preference', error);
+    } catch {
+      alert(t('settings.saveError'));
     }
   };
 
@@ -110,7 +123,7 @@ export function SettingsPage() {
                         options={[
                           { value: 'PEN', label: 'Soles (S/.)' },
                           { value: 'USD', label: 'US Dollars ($)' },
-                          { value: 'EUR', label: 'Euros (?)' },
+                          { value: 'EUR', label: 'Euros (€)' },
                           { value: 'MXN', label: 'Mexican Pesos ($)' },
                           { value: 'COP', label: 'Colombian Pesos ($)' },
                           { value: 'CLP', label: 'Chilean Pesos ($)' },

@@ -1,0 +1,77 @@
+name: Security CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Test backend
+        run: ./mvnw --batch-mode test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: equio_frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: equio_frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check:i18n
+      - run: npm run build
+      - run: npm audit --audit-level=high
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  dependency-scan:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Scan backend dependencies
+        run: ./mvnw --batch-mode verify -Psecurity-scan -DskipTests

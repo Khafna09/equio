@@ -10,6 +10,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Pattern;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,6 +23,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @RestController
+@Validated
 @RequestMapping("/api/v1/movements")
 @Tag(name = "Movements", description = "Endpoints para la gestión de ingresos y gastos (Movimientos)")
 @SecurityRequirement(name = "Bearer Authentication")
@@ -56,8 +60,8 @@ public class MovementController {
     @GetMapping
     public ResponseEntity<List<MovementResponse>> getAllMovements(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam(required = false) String type,
-            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) @Pattern(regexp = "(?i)INCOME|EXPENSE") String type,
+            @RequestParam(required = false) @Positive Long categoryId,
             @RequestParam(required = false) LocalDate startDate,
             @RequestParam(required = false) LocalDate endDate) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
@@ -73,7 +77,7 @@ public class MovementController {
     @GetMapping("/{id}")
     public ResponseEntity<MovementResponse> getMovementById(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
+            @PathVariable @Positive Long id) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         return ResponseEntity.ok(movementService.getById(user.getId(), id));
     }
@@ -88,7 +92,7 @@ public class MovementController {
     @PutMapping("/{id}")
     public ResponseEntity<MovementResponse> updateMovement(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody CreateMovementRequest request) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         return ResponseEntity.ok(movementService.updateMovement(user.getId(), id, request));
@@ -103,7 +107,7 @@ public class MovementController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteMovement(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
+            @PathVariable @Positive Long id) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         movementService.deleteMovement(user.getId(), id);
         return ResponseEntity.noContent().build();

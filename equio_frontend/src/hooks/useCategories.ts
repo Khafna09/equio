@@ -1,15 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { categoriesApi } from '../api/categories.api';
-import type { CategoryResponse } from '../types/category.types';
+import type { CategoryRequest, CategoryResponse } from '../types/category.types';
+import { getApiErrorMessage } from '../utils/apiError';
+import { useI18n } from '../i18n/i18nContextValue';
 
 export function useCategories() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
-  const { 
-    data: categories = [], 
-    isLoading, 
-    error, 
-    refetch 
+  const {
+    data: categories = [],
+    isLoading,
+    error,
+    refetch
   } = useQuery<CategoryResponse[]>({
     queryKey: ['categories'],
     queryFn: async () => {
@@ -18,7 +21,7 @@ export function useCategories() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: CategoryRequest) => {
       return await categoriesApi.create(data);
     },
     onSuccess: () => {
@@ -27,7 +30,7 @@ export function useCategories() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+    mutationFn: async ({ id, data }: { id: number; data: CategoryRequest }) => {
       return await categoriesApi.update(id, data);
     },
     onSuccess: () => {
@@ -46,10 +49,10 @@ export function useCategories() {
     }
   });
 
-  return { 
-    categories, 
-    isLoading, 
-    error: error ? (error as any).response?.data?.message || 'Error al cargar categorías' : null, 
+  return {
+    categories,
+    isLoading,
+    error: error ? getApiErrorMessage(error, t('common.loadCategoriesError')) : null,
     refetch,
     createCategory: createMutation.mutateAsync,
     updateCategory: updateMutation.mutateAsync,

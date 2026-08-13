@@ -4,3 +4,4 @@ target/
 dist/
 .env
 .DS_Store
+/SECURITY_AUDIT.md

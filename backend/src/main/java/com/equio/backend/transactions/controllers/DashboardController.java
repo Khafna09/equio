@@ -8,7 +8,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 
 @RestController
+@Validated
 @RequestMapping("/api/v1/dashboard")
 @Tag(name = "Dashboard", description = "Endpoint para obtener el resumen financiero del período")
 @SecurityRequirement(name = "Bearer Authentication")
@@ -36,15 +40,15 @@ public class DashboardController {
             summary = "Resumen del dashboard",
             description = """
                     Devuelve el resumen financiero del usuario para el mes y año indicados.
-                    
+
                     Incluye:
                     - `totalIncome`: Total de ingresos del mes
                     - `totalExpense`: Total de gastos del mes
                     - `balance`: Diferencia (ingresos - gastos)
                     - `topCategories`: Top 3 categorías donde más se gastó, con su porcentaje del total
-                    
+
                     Si no se especifica `month` ni `year`, se usa el mes y año actuales.
-                    
+
                     Ejemplo: `GET /api/v1/dashboard/summary?month=7&year=2025`
                     """
     )
@@ -55,12 +59,11 @@ public class DashboardController {
     @GetMapping("/summary")
     public ResponseEntity<DashboardSummaryResponse> getSummary(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam(required = false) Integer month,
-            @RequestParam(required = false) Integer year) {
+            @RequestParam(required = false) @Min(1) @Max(12) Integer month,
+            @RequestParam(required = false) @Min(2000) @Max(2100) Integer year) {
 
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
 
-        // Si no se especifica mes/año, se usa el actual
         int targetMonth = (month != null) ? month : LocalDate.now().getMonthValue();
         int targetYear = (year != null) ? year : LocalDate.now().getYear();
 

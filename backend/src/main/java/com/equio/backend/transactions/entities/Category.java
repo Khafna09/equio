@@ -31,18 +31,18 @@ public class Category extends AuditableModel {
     @NotBlank
     @Size(max = 30)
     @Column(length = 30, nullable = false)
-    private String color; // Ej: "#FF5733"
+    private String color;
 
     @NotBlank
     @Size(max = 50)
     @Column(length = 50, nullable = false)
-    private String icon; // Ej: emoji "🍔" o nombre de ícono
+    private String icon;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    // Constructor de conveniencia sin ID (el ID lo genera la BD)
+
     public Category(String name, String color, String icon, User user) {
         this.name = name;
         this.color = color;

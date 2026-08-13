@@ -26,22 +26,21 @@ public class SavingGoal extends AuditableModel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    private long version;
+
     @Column(nullable = false, length = 100)
     private String name;
 
-    // Cuánto quiere ahorrar en total para esta meta
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal targetAmount;
 
-    // Cuánto ha ahorrado hasta ahora (se actualiza con addOrWithdrawFund)
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal currentAmount = BigDecimal.ZERO;
 
-    // Fecha límite opcional para alcanzar la meta
     @Column(nullable = true)
     private LocalDate deadline;
 
-    // Si la meta está vinculada a un Budget, al borrar el Budget también se borra esta meta (cascade)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "budget_id", nullable = true)
     private Budget budget;

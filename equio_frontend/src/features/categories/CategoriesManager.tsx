@@ -5,7 +5,7 @@ import { Trash2, Pencil, Plus } from 'lucide-react';
 import { NewCategoryModal } from './NewCategoryModal';
 import type { CategoryResponse } from '../../types/category.types';
 import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 export function CategoriesManager() {
   const { categories, isLoading, deleteCategory } = useCategories();

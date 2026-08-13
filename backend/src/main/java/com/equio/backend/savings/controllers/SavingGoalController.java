@@ -11,6 +11,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
+@Validated
 @RequestMapping("/api/v1/savings")
 @Tag(name = "Savings", description = "Endpoints para gestión de metas de ahorro")
 @SecurityRequirement(name = "Bearer Authentication")
@@ -92,7 +95,7 @@ public class SavingGoalController {
     @GetMapping("/{id}")
     public ResponseEntity<SavingGoalResponse> getById(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
+            @PathVariable @Positive Long id) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         return ResponseEntity.ok(savingGoalService.getById(user.getId(), id));
     }
@@ -122,7 +125,7 @@ public class SavingGoalController {
     @PutMapping("/{id}")
     public ResponseEntity<SavingGoalResponse> update(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody SavingGoalRequest request) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         return ResponseEntity.ok(savingGoalService.update(user.getId(), id, request));
@@ -156,7 +159,7 @@ public class SavingGoalController {
     @PostMapping("/{id}/fund")
     public ResponseEntity<SavingGoalResponse> fund(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody FundRequest request) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         return ResponseEntity.ok(savingGoalService.addOrWithdrawFund(user.getId(), id, request));
@@ -174,7 +177,7 @@ public class SavingGoalController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
+            @PathVariable @Positive Long id) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         savingGoalService.delete(user.getId(), id);
         return ResponseEntity.noContent().build();

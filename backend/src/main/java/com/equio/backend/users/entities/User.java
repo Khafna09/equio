@@ -2,72 +2,44 @@ package com.equio.backend.users.entities;
 
 import com.equio.backend.shared.entities.AuditableModel;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
-/**
- * Entidad JPA principal para los Usuarios del sistema.
- * Extiende de AuditableModel para poseer automáticamente las fechas de auditoría.
- */
 @Getter
 @Setter
 @Entity
 @Table(name = "users")
 public class User extends AuditableModel {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @NotBlank
-    @Size(max=50)
-    @Column(unique=true)
+    @Column(nullable = false, unique = true, length = 254)
     private String email;
-
-    @NotBlank
-    @Size(max = 120)
+    @Column(nullable = false, length = 120)
     private String password;
+    @Column(nullable = false)
+    private boolean enabled = true;
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts;
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+    @Column(name = "last_login_at")
+    private Instant lastLoginAt;
 
-    @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "user_roles",
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id"))
-    private Set<Role> roles;
+    private Set<Role> roles = new HashSet<>();
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, optional = false)
     private Profile profile;
 
-    public User() {
-        this.roles = new HashSet<>();
+    public void addRole(Role role) {
+        roles.add(role);
     }
-
-    public User(String email, String password) {
-        this.email = email;
-        this.password = password;
-        this.roles = new HashSet<>();
-    }
-
-    public User(String email, String password, List<Role> roles) {
-        this(email, password);
-        addRoles(roles);
-    }
-
-    public User addRole(Role role) {
-        this.roles.add(role);
-        return this;
-    }
-
-    public User addRoles(List<Role> roles) {
-        var validatedRoleSet = Role.validateRoleSet(roles);
-        this.roles.addAll(validatedRoleSet);
-        return this;
-    }
-
-
 }

@@ -13,7 +13,8 @@ import { DateTimePickerModal } from '../../components/ui/DateTimePickerModal';
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 interface NewMovementModalProps {
   isOpen: boolean;
@@ -70,8 +71,8 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
       setDescription('');
       setSelectedCategory(null);
       handleClose();
-    } catch (error: any) {
-      setSubmitError(error?.message || 'Error al guardar el movimiento. Inténtalo de nuevo.');
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, 'Error al guardar el movimiento. Inténtalo de nuevo.'));
     } finally {
       setIsSubmitting(false);
     }

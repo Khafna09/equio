@@ -1,6 +1,6 @@
 import { Wallet } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface EmptyBudgetStateProps {
   onOpenDrawer: (isGlobal: boolean) => void;

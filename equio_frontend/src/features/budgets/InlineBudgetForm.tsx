@@ -7,7 +7,7 @@ import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
 import { Flip } from 'gsap/Flip';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 gsap.registerPlugin(Flip);
 gsap.registerPlugin(useGSAP);
@@ -91,14 +91,14 @@ export function InlineBudgetForm({ onSave, globalBudgetRemaining }: InlineBudget
             <div className="w-10 h-10 rounded-full bg-white dark:bg-neutral-800 shadow-sm flex items-center justify-center text-primary-500 mb-2">
               <Plus className="w-5 h-5" />
             </div>
-            <span className="text-sm font-semibold text-neutral-600 dark:text-neutral-300">Añadir Categoría</span>
+            <span className="text-sm font-semibold text-neutral-600 dark:text-neutral-300">{t('budgets.addCategory')}</span>
           </>
         ) : (
           <div className="w-full min-w-0" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col gap-3">
               <div className="min-w-0">
                 <label className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 mb-1 block">
-                  Categoría
+                  {t('common.category')}
                 </label>
                 <Select
                   options={categoryOptions}

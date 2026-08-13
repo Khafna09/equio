@@ -1,9 +1,12 @@
 package com.equio.backend.budgets.services;
 
+import com.equio.backend.shared.exceptions.ResourceNotFoundException;
+import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.budgets.dto.requests.BudgetRequest;
 import com.equio.backend.budgets.dto.responses.BudgetResponse;
 import com.equio.backend.budgets.entities.Budget;
 import com.equio.backend.budgets.entities.enums.BudgetStatus;
+import com.equio.backend.budgets.entities.enums.SavingsType;
 import com.equio.backend.budgets.repositories.BudgetRepository;
 import com.equio.backend.savings.repositories.SavingGoalRepository;
 import com.equio.backend.transactions.entities.Category;
@@ -31,22 +34,27 @@ public class BudgetServiceImpl implements BudgetService {
     private final CategoryRepository categoryRepository;
     private final SavingGoalRepository savingGoalRepository;
     private final MovementRepository movementRepository;
+    private final RlsContext rlsContext;
 
     public BudgetServiceImpl(BudgetRepository budgetRepository,
                              UserRepository userRepository,
                              CategoryRepository categoryRepository,
                              SavingGoalRepository savingGoalRepository,
-                             MovementRepository movementRepository) {
+                             MovementRepository movementRepository,
+                             RlsContext rlsContext) {
         this.budgetRepository = budgetRepository;
         this.userRepository = userRepository;
         this.categoryRepository = categoryRepository;
         this.savingGoalRepository = savingGoalRepository;
         this.movementRepository = movementRepository;
+        this.rlsContext = rlsContext;
     }
 
     @Override
     @Transactional
     public BudgetResponse create(Long userId, BudgetRequest request) {
+        rlsContext.setUserId(userId);
+        validateSavings(request.totalAmount(), request.savingsType(), request.savingsValue());
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
@@ -113,11 +121,8 @@ public class BudgetServiceImpl implements BudgetService {
         budget.setSpentAmount(initialSpent);
 
         if (!isGlobalRequest) {
-            Category category = categoryRepository.findById(request.categoryId())
-                    .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada con ID: " + request.categoryId()));
-            if (!category.getUser().getId().equals(userId)) {
-                throw new IllegalArgumentException("La categoría no pertenece al usuario");
-            }
+            Category category = categoryRepository.findByIdAndUserId(request.categoryId(), userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Category"));
             budget.setCategory(category);
             
             if (!Boolean.TRUE.equals(request.isIndependent())) {
@@ -196,7 +201,6 @@ public class BudgetServiceImpl implements BudgetService {
                 indep.setEndDate(budget.getEndDate());
 
                 if (Boolean.TRUE.equals(request.retroactiveCatchUp())) {
-                    // Re-calculate each child's spent from the global's date range
                     BigDecimal indepSpent = movementRepository.sumExpenseByUserIdAndCategoryIdAndDateBetween(
                         userId, indep.getCategory().getId(), startDateTime, endDateTime);
                     indep.setSpentAmount(indepSpent != null ? indepSpent : BigDecimal.ZERO);
@@ -218,6 +222,7 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional(readOnly = true)
     public List<BudgetResponse> getAllByUser(Long userId) {
+        rlsContext.setUserId(userId);
         return budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.ACTIVE)
                 .stream()
                 .map(this::toResponse)
@@ -227,6 +232,7 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional(readOnly = true)
     public List<BudgetResponse> getHistoryByUser(Long userId) {
+        rlsContext.setUserId(userId);
         return budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.CLOSED)
                 .stream()
                 .map(this::toResponse)
@@ -236,6 +242,7 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional(readOnly = true)
     public BudgetResponse getById(Long userId, Long budgetId) {
+        rlsContext.setUserId(userId);
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
         return toResponse(budget);
     }
@@ -243,6 +250,8 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional
     public BudgetResponse update(Long userId, Long budgetId, BudgetRequest request) {
+        rlsContext.setUserId(userId);
+        validateSavings(request.totalAmount(), request.savingsType(), request.savingsValue());
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
 
         // BR-5.4: Inmutabilidad del Historial
@@ -298,7 +307,6 @@ public class BudgetServiceImpl implements BudgetService {
         } else {
             budget.setStartDate(request.startDate());
             budget.setEndDate(request.endDate());
-            // Herencia a hijos si se modifican las fechas de un global no fijo
             if (isGlobal && budget.getSubBudgets() != null) {
                 for (Budget child : budget.getSubBudgets()) {
                     if (child.getStatus() == BudgetStatus.ACTIVE) {
@@ -310,11 +318,8 @@ public class BudgetServiceImpl implements BudgetService {
         }
 
         if (request.categoryId() != null) {
-            Category category = categoryRepository.findById(request.categoryId())
-                    .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada"));
-            if (!category.getUser().getId().equals(userId)) {
-                throw new IllegalArgumentException("La categoría no pertenece al usuario");
-            }
+            Category category = categoryRepository.findByIdAndUserId(request.categoryId(), userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Category"));
             budget.setCategory(category);
         } else {
             budget.setCategory(null);
@@ -326,6 +331,7 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional
     public void delete(Long userId, Long budgetId, boolean cascade) {
+        rlsContext.setUserId(userId);
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
         
         // BR-7.2: Orfandad por Eliminación Global
@@ -356,6 +362,7 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional
     public BudgetResponse closeBudget(Long userId, Long budgetId) {
+        rlsContext.setUserId(userId);
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
         if (budget.getStatus() == BudgetStatus.CLOSED) {
             throw new IllegalArgumentException("El presupuesto ya está cerrado.");
@@ -381,6 +388,7 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional
     public void addExpense(Long userId, Long categoryId, BigDecimal amount) {
+        rlsContext.setUserId(userId);
         Optional<Budget> budgetOpt = Optional.empty();
 
         if (categoryId != null) {
@@ -399,7 +407,6 @@ public class BudgetServiceImpl implements BudgetService {
             budget.setSpentAmount(budget.getSpentAmount().add(amount));
             budgetRepository.save(budget);
             
-            // Si es un sub-presupuesto, también sumar al padre global (propagar)
             if (budget.getParentBudget() != null && budget.getParentBudget().getStatus() == BudgetStatus.ACTIVE) {
                 Budget parent = budget.getParentBudget();
                 parent.setSpentAmount(parent.getSpentAmount().add(amount));
@@ -408,15 +415,10 @@ public class BudgetServiceImpl implements BudgetService {
         });
     }
 
-    // ─── Helper ────────────────────────────────────────────────────────────────
 
     private Budget findBudgetAndValidateOwner(Long userId, Long budgetId) {
-        Budget budget = budgetRepository.findById(budgetId)
-                .orElseThrow(() -> new IllegalArgumentException("Presupuesto no encontrado con ID: " + budgetId));
-        if (!budget.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("El presupuesto no pertenece al usuario");
-        }
-        return budget;
+        return budgetRepository.findByIdAndUserId(budgetId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Budget"));
     }
 
     private BudgetResponse toResponse(Budget budget) {
@@ -494,13 +496,34 @@ public class BudgetServiceImpl implements BudgetService {
         return calculateAssignableLimit(parentBudget.getTotalAmount(), parentBudget.getSavingsType(), parentBudget.getSavingsValue());
     }
 
-    private BigDecimal calculateAssignableLimit(BigDecimal totalAmount, com.equio.backend.budgets.entities.enums.SavingsType savingsType, BigDecimal savingsValue) {
+    private void validateSavings(
+            BigDecimal totalAmount,
+            SavingsType savingsType,
+            BigDecimal savingsValue
+    ) {
+        if ((savingsType == null) != (savingsValue == null)) {
+            throw new IllegalArgumentException(
+                    "Savings type and value must be provided together");
+        }
+        if (savingsType == SavingsType.PERCENTAGE
+                && savingsValue.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new IllegalArgumentException(
+                    "Savings percentage cannot exceed 100");
+        }
+        if (savingsType == SavingsType.FIXED
+                && savingsValue.compareTo(totalAmount) > 0) {
+            throw new IllegalArgumentException(
+                    "Fixed savings cannot exceed the budget amount");
+        }
+    }
+
+    private BigDecimal calculateAssignableLimit(BigDecimal totalAmount, SavingsType savingsType, BigDecimal savingsValue) {
         if (totalAmount == null) return BigDecimal.ZERO;
         BigDecimal deduction = BigDecimal.ZERO;
         if (savingsType != null && savingsValue != null) {
-            if (savingsType == com.equio.backend.budgets.entities.enums.SavingsType.FIXED) {
+            if (savingsType == SavingsType.FIXED) {
                 deduction = savingsValue;
-            } else if (savingsType == com.equio.backend.budgets.entities.enums.SavingsType.PERCENTAGE) {
+            } else if (savingsType == SavingsType.PERCENTAGE) {
                 deduction = totalAmount.multiply(savingsValue)
                         .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             }

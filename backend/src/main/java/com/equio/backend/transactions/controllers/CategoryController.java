@@ -11,6 +11,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
+@Validated
 @RequestMapping("/api/v1/categories")
 @Tag(name = "Categories", description = "Endpoints para la gestión de categorías de gastos e ingresos")
 @SecurityRequirement(name = "Bearer Authentication")
@@ -77,7 +80,7 @@ public class CategoryController {
     @GetMapping("/{id}")
     public ResponseEntity<CategoryResponse> getCategoryById(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
+            @PathVariable @Positive Long id) {
         var user = getAuthenticatedUser(userDetails);
         return ResponseEntity.ok(categoryService.getById(user.getId(), id));
     }
@@ -92,7 +95,7 @@ public class CategoryController {
     @PutMapping("/{id}")
     public ResponseEntity<CategoryResponse> updateCategory(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody CategoryRequest request) {
         var user = getAuthenticatedUser(userDetails);
         return ResponseEntity.ok(categoryService.updateCategory(user.getId(), id, request));
@@ -107,7 +110,7 @@ public class CategoryController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteCategory(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
+            @PathVariable @Positive Long id) {
         var user = getAuthenticatedUser(userDetails);
         categoryService.deleteCategory(user.getId(), id);
         return ResponseEntity.noContent().build();

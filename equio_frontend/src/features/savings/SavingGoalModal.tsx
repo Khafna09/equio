@@ -6,7 +6,7 @@ import { useSavings } from '../../hooks/useSavings';
 import { fetchUnsplashGoalImage } from '../../utils/unsplash';
 
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface SavingGoalModalProps {
   isOpen: boolean;

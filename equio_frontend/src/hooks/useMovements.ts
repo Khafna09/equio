@@ -1,8 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../utils/apiError';
 import { movementsApi } from '../api/movements.api';
 import type { MovementResponse, CreateMovementRequest } from '../types/movement.types';
+import { useI18n } from '../i18n/i18nContextValue';
 
 export function useMovements(filters?: { type?: string; categoryId?: number; startDate?: string; endDate?: string }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   const {
@@ -53,7 +56,7 @@ export function useMovements(filters?: { type?: string; categoryId?: number; sta
   return {
     movements,
     isLoading,
-    error: error ? (error as any).response?.data?.message || 'Error al cargar movimientos' : null,
+    error: error ? getApiErrorMessage(error, t('common.loadMovementsError')) : null,
     refetch,
     createMovement: createMutation.mutateAsync,
     updateMovement: updateMutation.mutateAsync,

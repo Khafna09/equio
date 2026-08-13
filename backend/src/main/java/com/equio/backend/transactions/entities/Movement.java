@@ -27,6 +27,9 @@ public class Movement extends AuditableModel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    private long version;
+
     @NotNull
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;

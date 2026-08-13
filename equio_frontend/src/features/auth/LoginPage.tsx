@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/authContextValue';
 import { authApi } from '../../api/auth.api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Mail, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -27,8 +28,8 @@ export function LoginPage() {
       const response = await authApi.signIn({ email, password });
       login(response);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('auth.signInError'));
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, t('auth.signInError')));
     } finally {
       setIsLoading(false);
     }
@@ -61,15 +62,17 @@ export function LoginPage() {
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              maxLength={254}
               required
             />
             <Input
               label={t('auth.password')}
               type="password"
               icon={<Lock className="w-5 h-5" />}
-              placeholder="??"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              maxLength={128}
               required
             />
 

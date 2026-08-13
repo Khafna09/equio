@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/authContextValue';
 import { authApi } from '../../api/auth.api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Mail, Lock, User } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -30,8 +31,8 @@ export function RegisterPage() {
       const loginResponse = await authApi.signIn({ email, password });
       login(loginResponse);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('auth.registerError'));
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, t('auth.registerError')));
     } finally {
       setIsLoading(false);
     }
@@ -64,6 +65,7 @@ export function RegisterPage() {
                 placeholder="Alex"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
+                maxLength={50}
                 required
               />
               <Input
@@ -71,6 +73,7 @@ export function RegisterPage() {
                 placeholder="Smith"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
+                maxLength={50}
                 required
               />
             </div>
@@ -81,17 +84,19 @@ export function RegisterPage() {
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              maxLength={254}
               required
             />
             <Input
               label={t('auth.password')}
               type="password"
               icon={<Lock className="w-5 h-5" />}
-              placeholder="??"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={12}
+              maxLength={128}
             />
 
             {error && (

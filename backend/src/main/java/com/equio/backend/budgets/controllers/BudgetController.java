@@ -10,6 +10,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
+@Validated
 @RequestMapping("/api/v1/budgets")
 @Tag(name = "Budgets", description = "Endpoints para gestión de presupuestos mensuales y continuos")
 @SecurityRequirement(name = "Bearer Authentication")
@@ -112,7 +115,7 @@ public class BudgetController {
     @GetMapping("/{id}")
     public ResponseEntity<BudgetResponse> getById(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
+            @PathVariable @Positive Long id) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         return ResponseEntity.ok(budgetService.getById(user.getId(), id));
     }
@@ -145,7 +148,7 @@ public class BudgetController {
     @PutMapping("/{id}")
     public ResponseEntity<BudgetResponse> update(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody BudgetRequest request) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         return ResponseEntity.ok(budgetService.update(user.getId(), id, request));
@@ -163,7 +166,7 @@ public class BudgetController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @RequestParam(defaultValue = "false") boolean cascade) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         budgetService.delete(user.getId(), id, cascade);
@@ -182,7 +185,7 @@ public class BudgetController {
     @PatchMapping("/{id}/close")
     public ResponseEntity<BudgetResponse> closeBudget(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
+            @PathVariable @Positive Long id) {
         var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
         return ResponseEntity.ok(budgetService.closeBudget(user.getId(), id));
     }

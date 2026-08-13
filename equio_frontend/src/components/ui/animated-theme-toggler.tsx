@@ -2,6 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { flushSync } from "react-dom";
 import { cn } from "../../utils/classNames";
+import { useI18n } from "../../i18n/i18nContextValue";
+
+interface ViewTransitionHandle {
+  ready: Promise<void>;
+  finished: Promise<void>;
+}
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (callback: () => void | Promise<void>) => ViewTransitionHandle;
+};
 
 export type TransitionVariant =
   | "circle"
@@ -149,6 +159,7 @@ export const AnimatedThemeToggler = ({
   onThemeChange,
   ...props
 }: AnimatedThemeTogglerProps) => {
+  const { t } = useI18n();
   const shape = variant ?? "circle";
   const isControlled = theme !== undefined;
   const [internalIsDark, setInternalIsDark] = useState(false);
@@ -213,7 +224,8 @@ export const AnimatedThemeToggler = ({
       }
     };
 
-    if (typeof (document as any).startViewTransition !== "function") {
+    const transitionDocument = document as ViewTransitionDocument;
+    if (typeof transitionDocument.startViewTransition !== "function") {
       applyTheme();
       return;
     }
@@ -242,7 +254,7 @@ export const AnimatedThemeToggler = ({
     };
 
     isTransitioningRef.current = true;
-    const transition = (document as any).startViewTransition(() => {
+    const transition = transitionDocument.startViewTransition(() => {
       flushSync(applyTheme);
     });
     if (typeof transition?.finished?.finally === "function") {
@@ -280,7 +292,7 @@ export const AnimatedThemeToggler = ({
       {...props}
     >
       {isDark ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-indigo-500" />}
-      <span className="sr-only">Toggle theme</span>
+      <span className="sr-only">{t('components.toggleTheme')}</span>
     </button>
   );
 };

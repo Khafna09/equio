@@ -32,42 +32,41 @@ public class Budget extends AuditableModel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    private long version;
+
     @Column(nullable = false, length = 100)
     private String name;
 
-    // Monto límite del presupuesto definido por el usuario
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount;
 
-    // Cuánto se ha gastado hasta ahora (lo actualiza BudgetServiceImpl.addExpense)
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal spentAmount = BigDecimal.ZERO;
 
-    // true = presupuesto continuo sin fechas; false = tiene startDate y endDate
+
     @Column(nullable = false)
     private boolean isFixed = false;
 
-    // Solo aplica cuando isFixed = false
+
     @Column(nullable = true)
     private LocalDate startDate;
 
     @Column(nullable = true)
     private LocalDate endDate;
 
-    // Se usa para almacenar la fecha de inicio del próximo ciclo (BR-4.4)
     @Column(nullable = true)
     private LocalDate nextStartDate;
 
-    // Tipo de ahorro (porcentaje o fijo)
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = true)
     private SavingsType savingsType;
 
-    // Valor del ahorro (porcentaje o monto fijo)
+
     @Column(nullable = true, precision = 12, scale = 2)
     private BigDecimal savingsValue;
 
-    // null = presupuesto global; con categoría = presupuesto por categoría
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = true)
     private Category category;

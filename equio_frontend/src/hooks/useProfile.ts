@@ -1,13 +1,14 @@
 ﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../utils/apiError';
 import { profileApi, type ProfileRequest, type ProfileResponse } from '../api/profile.api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/authContextValue';
 import { useEffect } from 'react';
-import { useI18n } from '../i18n/I18nContext';
+import { useI18n } from '../i18n/i18nContextValue';
 
 export function useProfile() {
   const queryClient = useQueryClient();
   const { user, updateUser } = useAuth();
-  const { language, setLanguage } = useI18n();
+  const { language, setLanguage, t } = useI18n();
 
   const {
     data: profile,
@@ -66,7 +67,7 @@ export function useProfile() {
   return {
     profile,
     isLoading,
-    error: error ? (error as any).response?.data?.message || 'Error al cargar el perfil' : null,
+    error: error ? getApiErrorMessage(error, t('common.loadProfileError')) : null,
     refetch,
     updateProfile: updateMutation.mutateAsync,
     isUpdating: updateMutation.isPending
