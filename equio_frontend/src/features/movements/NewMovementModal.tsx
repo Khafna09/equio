@@ -87,6 +87,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
         onClose={handleClose}
         title={viewMode === 'MOVEMENT' ? t('movements.newMovement') : t('movements.newCategory')}
         triggerRect={triggerRect}
+        isDeemphasized={isDatePickerOpen}
       >
         <AnimatePresence mode="wait">
           {viewMode === 'MOVEMENT' ?(

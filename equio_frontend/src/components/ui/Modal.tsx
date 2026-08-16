@@ -12,16 +12,19 @@ interface ModalProps {
   className?: string;
   containerClassName?: string;
   triggerRect?: TriggerRect | null;
+  isDeemphasized?: boolean;
 }
 
-export function Modal({ 
-  isOpen, 
-  onClose, 
-  title, 
-  children, 
-  className, 
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  className,
   containerClassName,
-  triggerRect 
+  triggerRect
+  ,
+  isDeemphasized = false,
 }: ModalProps) {
 
   // Calculate shared element transform offset relative to screen center
@@ -61,9 +64,9 @@ export function Modal({
 
   const animateVariant = {
     x: 0,
-    y: 0,
-    scale: 1,
-    opacity: 1,
+    y: isDeemphasized ? 8 : 0,
+    scale: isDeemphasized ? 0.60 : 1,
+    opacity: isDeemphasized ? 0.58 : 1,
     borderRadius: '24px'
   };
 
@@ -91,7 +94,7 @@ export function Modal({
             onClick={onClose}
             className="absolute inset-0 bg-black/35 backdrop-blur-sm"
           />
-          
+
           <motion.div
             initial={initialVariant}
             animate={animateVariant}
@@ -101,6 +104,7 @@ export function Modal({
               ease: [0.16, 1, 0.3, 1]
             }}
             className={cn(
+              isDeemphasized && "pointer-events-none blur-[1px]",
               "relative z-10 w-full max-w-md bg-white dark:bg-neutral-800 border border-transparent dark:border-neutral-700/80 shadow-2xl origin-center overflow-hidden flex flex-col max-h-[90vh] transform-gpu will-change-transform text-neutral-900 dark:text-white",
               className
             )}
@@ -108,7 +112,7 @@ export function Modal({
             {title && (
               <div className="flex items-center justify-between p-6 pb-2 shrink-0">
                 <h3 className="text-xl font-semibold text-neutral-900 dark:text-white">{title}</h3>
-                <button 
+                <button
                   type="button"
                   onClick={onClose}
                   className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white bg-neutral-50 dark:bg-neutral-700/60 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full transition-colors"
@@ -118,7 +122,7 @@ export function Modal({
               </div>
             )}
             {!title && (
-              <button 
+              <button
                 type="button"
                 onClick={onClose}
                 className="absolute top-4 right-4 z-20 p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white bg-neutral-50 dark:bg-neutral-700/60 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full transition-colors"

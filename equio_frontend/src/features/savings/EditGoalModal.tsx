@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
+import { DatePicker } from '../../components/ui/DatePicker';
 import { Button } from '../../components/ui/Button';
 import { useSavings } from '../../hooks/useSavings';
 import { fetchUnsplashGoalImage } from '../../utils/unsplash';
@@ -107,13 +108,11 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
           onChange={(e) => setTag(e.target.value.toUpperCase())}
           maxLength={15}
         />
-
-        <Input 
-          label={t('savings.deadline')} 
-          type="date" 
-          value={deadline}
-          onChange={(e) => setDeadline(e.target.value)}
-        />
+          <DatePicker
+            label={t('savings.deadline')}
+            value={deadline}
+            onChange={setDeadline}
+          />
 
         <div className="flex gap-3 mt-4">
           <Button 

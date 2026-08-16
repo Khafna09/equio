@@ -3,6 +3,11 @@ import type { CategorySummary } from '../../types/dashboard.types';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
 
+interface DonutTooltipParams {
+  name?: string;
+  value?: number | string;
+  percent?: number;
+}
 interface DonutChartProps {
   data: CategorySummary[];
   topCategories: CategorySummary[];
@@ -24,7 +29,18 @@ export function DonutChart({ data: categories, topCategories }: DonutChartProps)
   const option = {
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: ${c} ({d}%)',
+      formatter: (params: DonutTooltipParams) => {
+        const value = formatCurrency(Number(params.value ?? 0));
+        const percentage = `${Number(params.percent ?? 0).toFixed(1)}%`;
+
+        return `<div style="font-family: 'Plus Jakarta Sans', sans-serif;">
+          <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">${params.name ?? ''}</div>
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;">${value}</span>
+            <span style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: #7c3aed;">${percentage}</span>
+          </div>
+        </div>`;
+      },
       backgroundColor: '#ffffff',
       borderColor: '#e5e4e7',
       textStyle: { color: '#111827', fontFamily: 'Plus Jakarta Sans', fontSize: 12 },

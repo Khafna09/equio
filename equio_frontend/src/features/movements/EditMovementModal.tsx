@@ -130,6 +130,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
         onClose={handleClose}
         title={viewMode === 'MOVEMENT' ? t('movements.editMovement') : t('movements.newCategory')}
         triggerRect={triggerRect}
+        isDeemphasized={isDatePickerOpen}
       >
         <AnimatePresence mode="wait">
           {viewMode === 'MOVEMENT' ? (
