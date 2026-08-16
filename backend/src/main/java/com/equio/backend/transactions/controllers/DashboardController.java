@@ -45,6 +45,7 @@ public class DashboardController {
                     - `totalIncome`: Total de ingresos del mes
                     - `totalExpense`: Total de gastos del mes
                     - `balance`: Diferencia (ingresos - gastos)
+                    - `expenseCategories`: Todas las categorías con gastos, para el gráfico circular
                     - `topCategories`: Top 3 categorías donde más se gastó, con su porcentaje del total
 
                     Si no se especifica `month` ni `year`, se usa el mes y año actuales.

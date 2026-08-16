@@ -9,15 +9,16 @@ interface CategorySelectorProps {
   selectedCategoryId?: number;
   onSelectCategory: (category: CategoryResponse | null) => void;
   onNewCategory: () => void;
+  optional?: boolean;
 }
 
-export function CategorySelector({ categories, isLoading, selectedCategoryId, onSelectCategory, onNewCategory }: CategorySelectorProps) {
+export function CategorySelector({ categories, isLoading, selectedCategoryId, onSelectCategory, onNewCategory, optional = false }: CategorySelectorProps) {
   const { t } = useI18n();
 
   return (
     <div>
       <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 block text-center mb-3">
-        {t('common.selectCategory')}
+        {t(optional ? 'common.selectCategoryOptional' : 'common.selectCategory')}
       </span>
 
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1">

@@ -9,6 +9,7 @@ public record DashboardSummaryResponse(
         BigDecimal balance,
         BigDecimal globalBudgetAmount,
         BigDecimal savingsDeduction,
+        List<CategorySummary> expenseCategories,
         List<CategorySummary> topCategories
 ) {
     public record CategorySummary(

@@ -67,7 +67,7 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
     @Query("SELECT m.category, SUM(m.amount) AS totalSpent FROM Movement m " +
            "WHERE m.user.id = :userId AND m.type = com.equio.backend.transactions.entities.enums.MovementType.EXPENSE AND m.date BETWEEN :startDate AND :endDate " +
            "GROUP BY m.category ORDER BY totalSpent DESC")
-    List<Object[]> findTopExpenseCategoriesByUserIdAndDateBetween(
+    List<Object[]> findExpenseCategoriesByUserIdAndDateBetween(
             @Param("userId") Long userId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate,

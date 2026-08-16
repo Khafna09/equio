@@ -45,10 +45,10 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
   const { symbol } = useCurrency();
   const { t, language } = useI18n();
   const parsedInitialDate = parseMovementDate(movement);
-  const initialCategory = movement
+  const initialCategory = movement?.categoryId != null
     ? categories.find((category) => category.id === movement.categoryId) ?? {
         id: movement.categoryId,
-        name: movement.categoryName,
+        name: movement.categoryName ?? t('common.uncategorized'),
         color: movement.categoryColor,
         icon: movement.categoryIcon,
       }
@@ -83,7 +83,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
     if (!movement) return;
 
     const parsedAmount = Math.abs(parseFloat(amount));
-    if (isNaN(parsedAmount) || parsedAmount <= 0 || !selectedCategory) return;
+    if (isNaN(parsedAmount) || parsedAmount <= 0) return;
 
     setSubmitError(null);
     setIsSubmitting(true);
@@ -94,7 +94,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
           amount: parsedAmount,
           type,
           description,
-          categoryId: selectedCategory.id,
+          categoryId: selectedCategory?.id ?? null,
           date: format(date, "yyyy-MM-dd'T'HH:mm:ss")
         }
       });
@@ -200,7 +200,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
 
               <div>
                 <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 block text-center mb-3">
-                  {t('common.selectCategory')}
+                  {t('common.selectCategoryOptional')}
                 </span>
 
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1">
@@ -303,7 +303,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                   variant="primary" 
                   className={`flex-1 py-3.5 text-base font-semibold transition-colors ${type === 'EXPENSE' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
                   isLoading={isSubmitting}
-                  disabled={!amount || parseFloat(amount) <= 0 || !selectedCategory || isDeleting}
+                  disabled={!amount || parseFloat(amount) <= 0 || isDeleting}
                 >
                   {t('common.saveChanges')} &rarr;
                 </Button>

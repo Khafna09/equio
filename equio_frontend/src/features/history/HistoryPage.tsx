@@ -116,12 +116,12 @@ function CalendarWidget({
               onClick={() => onSelectDate(isSelected ? null : dateStr)}
               className={`
                 relative h-8 rounded-xl flex items-center justify-center font-medium transition-all
-                ${!inMonth 
-                  ? 'text-neutral-300 dark:text-neutral-600' 
-                  : isSelected 
-                    ? 'bg-primary-600 text-white font-bold shadow-md shadow-primary-500/30' 
-                    : isCurrentDay 
-                      ? 'bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300 font-bold border border-primary-200 dark:border-primary-800' 
+                ${!inMonth
+                  ? 'text-neutral-300 dark:text-neutral-600'
+                  : isSelected
+                    ? 'bg-primary-600 text-white font-bold shadow-md shadow-primary-500/30'
+                    : isCurrentDay
+                      ? 'bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300 font-bold border border-primary-200 dark:border-primary-800'
                       : 'text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700/60'
                 }
               `}
@@ -331,7 +331,7 @@ function MovementList({
                             {mov.categoryIcon || (mov.type === 'INCOME' ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-rose-500" />)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-neutral-900 dark:text-white text-sm leading-tight">{mov.categoryName}</p>
+                            <p className="font-semibold text-neutral-900 dark:text-white text-sm leading-tight">{mov.categoryName ?? t('common.uncategorized')}</p>
                             {subInfo.text && (
                               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug mt-0.5 break-words">
                                 {subInfo.text}
@@ -357,7 +357,7 @@ function MovementList({
                       </HoverCardTrigger>
                       <HoverCardContent side="top" className="w-64 border-none shadow-xl dark:bg-neutral-800 dark:text-white">
                         <div className="space-y-1">
-                          <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{mov.categoryName}</h4>
+                          <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{mov.categoryName ?? t('common.uncategorized')}</h4>
                           <p className="text-sm text-neutral-500 dark:text-neutral-400">{subInfo.fullText}</p>
                         </div>
                       </HoverCardContent>

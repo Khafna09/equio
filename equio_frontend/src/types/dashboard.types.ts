@@ -1,5 +1,5 @@
 export interface CategorySummary {
-  categoryName: string;
+  categoryName: string | null;
   categoryColor?: string;
   categoryIcon?: string;
   totalSpent: number;
@@ -12,5 +12,6 @@ export interface DashboardSummaryResponse {
   balance: number;
   globalBudgetAmount: number | null;
   savingsDeduction: number | null;
+  expenseCategories: CategorySummary[];
   topCategories: CategorySummary[];
 }

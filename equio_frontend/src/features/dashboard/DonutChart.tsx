@@ -5,16 +5,17 @@ import { useI18n } from '../../i18n/i18nContextValue';
 
 interface DonutChartProps {
   data: CategorySummary[];
+  topCategories: CategorySummary[];
 }
 
-export function DonutChart({ data: categories }: DonutChartProps) {
+export function DonutChart({ data: categories, topCategories }: DonutChartProps) {
   const { formatCurrency: formatCurrencyHook } = useCurrency();
   const { t } = useI18n();
   const formatCurrency = (val: number) => formatCurrencyHook(val, { maximumFractionDigits: 0 });
 
   const chartData = categories.map((cat) => ({
     value: cat.totalSpent,
-    name: cat.categoryName,
+    name: cat.categoryName ?? t('common.uncategorized'),
     itemStyle: { color: cat.categoryColor || '#6366F1' },
   }));
 
@@ -75,14 +76,14 @@ export function DonutChart({ data: categories }: DonutChartProps) {
       </div>
 
       <div className="w-full mt-4 space-y-3 border-t border-neutral-100 dark:border-neutral-700 pt-4">
-        {categories.map((cat) => (
-          <div key={cat.categoryName} className="flex items-center justify-between text-sm font-semibold">
+        {topCategories.map((cat) => (
+          <div key={cat.categoryName ?? 'uncategorized'} className="flex items-center justify-between text-sm font-semibold">
             <div className="flex items-center gap-2.5 min-w-0">
               <span 
                 className="w-2.5 h-2.5 rounded-full shrink-0" 
                 style={{ backgroundColor: cat.categoryColor || '#6366F1' }} 
               />
-              <span className="text-neutral-700 dark:text-neutral-200 truncate">{cat.categoryName}</span>
+              <span className="text-neutral-700 dark:text-neutral-200 truncate">{cat.categoryName ?? t('common.uncategorized')}</span>
             </div>
             <span className="text-neutral-900 dark:text-white font-bold ml-4 shrink-0">{formatCurrency(cat.totalSpent)}</span>
           </div>

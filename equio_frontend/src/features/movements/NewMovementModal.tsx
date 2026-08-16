@@ -55,7 +55,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsedAmount = Math.abs(parseFloat(amount));
-    if (isNaN(parsedAmount) || parsedAmount <= 0 || !selectedCategory) return;
+    if (isNaN(parsedAmount) || parsedAmount <= 0) return;
 
     setSubmitError(null);
     setIsSubmitting(true);
@@ -64,7 +64,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
         amount: parsedAmount,
         type,
         description,
-        categoryId: selectedCategory.id,
+        categoryId: selectedCategory?.id,
         date: format(date, "yyyy-MM-dd'T'HH:mm:ss")
       });
       setAmount('');
@@ -161,6 +161,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
                 selectedCategoryId={selectedCategory?.id}
                 onSelectCategory={setSelectedCategory}
                 onNewCategory={() => setViewMode('NEW_CATEGORY')}
+                optional
               />
 
               <div className="flex gap-3">
@@ -203,7 +204,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
                 variant="primary" 
                 className={`w-full py-3.5 text-base font-semibold transition-colors ${type === 'EXPENSE' ?'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
                 isLoading={isSubmitting}
-                disabled={!amount || parseFloat(amount) <= 0 || !selectedCategory}
+                disabled={!amount || parseFloat(amount) <= 0}
               >
                 {type === 'EXPENSE' ?t('movements.saveExpense') : t('movements.saveIncome')} &rarr;
               </Button>

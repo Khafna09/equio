@@ -272,7 +272,7 @@ export function DashboardPage() {
           <div className="flex-1 flex flex-col justify-center">
             {isLoadingSummary ?(
               <div className="w-44 h-44 rounded-full bg-neutral-100 dark:bg-neutral-800 animate-pulse mx-auto" />
-            ) : !summary?.topCategories || summary.topCategories.length === 0 ?(
+            ) : !summary?.expenseCategories || summary.expenseCategories.length === 0 ?(
               <div className="text-center p-6 bg-neutral-50 dark:bg-neutral-900/60 rounded-3xl border-2 border-dashed border-neutral-200 dark:border-neutral-700/60 my-auto">
                 <div className="w-14 h-14 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center mx-auto mb-3 text-neutral-400 dark:text-neutral-500 dark:text-neutral-400">
                   <PieChart className="w-7 h-7" />
@@ -282,7 +282,7 @@ export function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <DonutChart data={summary.topCategories} />
+              <DonutChart data={summary.expenseCategories} topCategories={summary.topCategories} />
             )}
           </div>
         </Card>
@@ -326,7 +326,7 @@ export function DashboardPage() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-neutral-900 dark:text-white text-sm truncate">
-                          {mov.categoryName}
+                          {mov.categoryName ?? t('common.uncategorized')}
                         </p>
                         {subInfo.text && (
                           <p className="text-xs truncate text-neutral-500 dark:text-neutral-400">
@@ -355,7 +355,7 @@ export function DashboardPage() {
                     </HoverCardTrigger>
                     <HoverCardContent side="top" className="w-64 border-none shadow-xl dark:bg-neutral-800 dark:text-white">
                       <div className="space-y-1">
-                        <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{mov.categoryName}</h4>
+                        <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{mov.categoryName ?? t('common.uncategorized')}</h4>
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">{subInfo.fullText}</p>
                       </div>
                     </HoverCardContent>

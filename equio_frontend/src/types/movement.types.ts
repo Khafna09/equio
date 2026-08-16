@@ -6,8 +6,8 @@ export interface MovementResponse {
   type: MovementType;
   description?: string;
   date: string;
-  categoryId: number;
-  categoryName: string;
+  categoryId: number | null;
+  categoryName: string | null;
   categoryColor?: string;
   categoryIcon?: string;
   createdAt: string;
@@ -17,6 +17,6 @@ export interface CreateMovementRequest {
   amount: number;
   type: MovementType;
   description?: string;
-  categoryId: number;
+  categoryId?: number | null;
   date?: string;
 }

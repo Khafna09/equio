@@ -11,8 +11,8 @@ export function Sidebar() {
 
   const navItems = [
     { label: t('common.dashboard'), icon: LayoutDashboard, href: '/' },
-    { label: t('common.budgets'), icon: WalletCards, href: '/budgets' },
     { label: t('common.history'), icon: History, href: '/history' },
+    { label: t('common.budgets'), icon: WalletCards, href: '/budgets' },
     { label: t('common.savingsGoals'), icon: Target, href: '/savings' },
   ];
 

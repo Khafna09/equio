@@ -8,7 +8,7 @@ import com.equio.backend.transactions.repositories.MovementRepository;
 import com.equio.backend.budgets.repositories.BudgetRepository;
 import com.equio.backend.budgets.entities.Budget;
 import com.equio.backend.budgets.entities.enums.SavingsType;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,11 +87,11 @@ public class DashboardServiceImpl implements DashboardService {
             balance = totalIncome.subtract(totalExpense);
         }
 
-        List<Object[]> topRaw = movementRepository.findTopExpenseCategoriesByUserIdAndDateBetween(
-                userId, startDateTime, endDateTime, PageRequest.of(0, 3));
+        List<Object[]> categoryRows = movementRepository.findExpenseCategoriesByUserIdAndDateBetween(
+                userId, startDateTime, endDateTime, Pageable.unpaged());
 
-        List<DashboardSummaryResponse.CategorySummary> topCategories = new ArrayList<>();
-        for (Object[] row : topRaw) {
+        List<DashboardSummaryResponse.CategorySummary> expenseCategories = new ArrayList<>();
+        for (Object[] row : categoryRows) {
             Category cat = (Category) row[0];
             BigDecimal catTotal = (BigDecimal) row[1];
 
@@ -102,8 +102,8 @@ public class DashboardServiceImpl implements DashboardService {
                         .doubleValue();
             }
 
-            topCategories.add(new DashboardSummaryResponse.CategorySummary(
-                    cat != null ? cat.getName() : "Sin categoría",
+            expenseCategories.add(new DashboardSummaryResponse.CategorySummary(
+                    cat != null ? cat.getName() : null,
                     cat != null ? cat.getColor() : null,
                     cat != null ? cat.getIcon() : null,
                     catTotal,
@@ -111,6 +111,16 @@ public class DashboardServiceImpl implements DashboardService {
             ));
         }
 
-        return new DashboardSummaryResponse(totalIncome, totalExpense, balance, globalBudgetAmount, savingsDeduction, topCategories);
+        List<DashboardSummaryResponse.CategorySummary> topCategories = expenseCategories.stream().limit(3).toList();
+
+        return new DashboardSummaryResponse(
+                totalIncome,
+                totalExpense,
+                balance,
+                globalBudgetAmount,
+                savingsDeduction,
+                expenseCategories,
+                topCategories
+        );
     }
 }
