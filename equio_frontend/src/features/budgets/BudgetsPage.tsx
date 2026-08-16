@@ -342,8 +342,9 @@ export function BudgetsPage() {
     });
   };
   const openDrawer = (isGlobal: boolean = true) => {
+    const resolvedIsGlobal = !isAdvancedMode && !globalBudget ? true : isGlobal;
     setBudgetToEdit(null);
-    setDrawerIsGlobal(isGlobal);
+    setDrawerIsGlobal(resolvedIsGlobal);
     setIsDrawerOpen(true);
   };
   const handleCloseBudget = async () => {
@@ -420,7 +421,7 @@ export function BudgetsPage() {
               </p>
             </div>
           ) : activeBudgets.length === 0 ? (
-            <EmptyBudgetState onOpenDrawer={openDrawer} />
+            <EmptyBudgetState onOpenDrawer={() => openDrawer(true)} />
           ) : (
             <>
               {!globalBudget && (

@@ -52,7 +52,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-neutral-900 dark:text-white text-lg flex items-center gap-2 truncate">
-              {budget.name}
+              {isAdvancedMode ? budget.name : (budget.categoryName || t('common.category'))}
               {isAdvancedMode && budget.parentBudgetId && (
                 <span className="text-[10px] bg-primary-50 text-primary-600 px-1.5 py-0.5 rounded-md font-medium uppercase tracking-wider">
                   {t('budgets.linked')}
@@ -64,7 +64,9 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 </span>
               )}
             </h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{budget.categoryName || t('common.category')}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+              {isAdvancedMode ? (budget.categoryName || t('common.category')) : t('budgets.subBudgetLabel')}
+            </p>
           </div>
         </div>
         <div className="relative z-10 flex items-center gap-1">
