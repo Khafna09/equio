@@ -30,7 +30,7 @@ import { useBudgets } from '../../hooks/useBudgets';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
 import { useTimeFormat } from '../../hooks/useTimeFormat';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { getApiErrorMessage, getApiErrorMessageAsync } from '../../utils/apiError';
 import type { BudgetHistoryMovement, BudgetHistoryReport, BudgetResponse } from '../../types/budget.types';
 
 interface SummaryMetricProps {
@@ -132,7 +132,7 @@ export function BudgetHistoryList() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setActionError(getApiErrorMessage(error, t('budgets.historyPdfError')));
+      setActionError(await getApiErrorMessageAsync(error, t('budgets.historyPdfError')));
     } finally {
       setIsDownloading(false);
     }

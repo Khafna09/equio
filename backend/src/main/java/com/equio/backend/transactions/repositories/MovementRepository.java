@@ -18,28 +18,29 @@ import java.util.Optional;
 @Repository
 public interface MovementRepository extends JpaRepository<Movement, Long> {
 
-    List<Movement> findByUserId(Long userId);
-
     Optional<Movement> findByIdAndUserId(Long id, Long userId);
-
-    List<Movement> findByUserIdOrderByDateDescIdDesc(Long userId);
-
-    List<Movement> findByUserIdAndType(Long userId, MovementType type);
-
-    List<Movement> findByUserIdAndTypeOrderByDateDesc(Long userId, MovementType type);
-
-    List<Movement> findByUserIdAndCategoryId(Long userId, Long categoryId);
 
     List<Movement> findByUserIdAndDateBetweenOrderByDateDesc(Long userId, LocalDateTime startDate, LocalDateTime endDate);
 
-    List<Movement> findByUserIdAndTypeAndDateBetweenOrderByDateDesc(
-            Long userId, MovementType type, LocalDateTime startDate, LocalDateTime endDate
-    );
+    long countByUserIdAndDateBetween(Long userId, LocalDateTime startDate, LocalDateTime endDate);
 
-    List<Movement> findByUserIdAndCategoryIdAndDateBetweenOrderByDateDesc(
-            Long userId, Long categoryId, LocalDateTime startDate, LocalDateTime endDate
+    @Query("""
+            SELECT m FROM Movement m
+            WHERE m.user.id = :userId
+              AND (:type IS NULL OR m.type = :type)
+              AND (:categoryId IS NULL OR m.category.id = :categoryId)
+              AND (:startDate IS NULL OR m.date >= :startDate)
+              AND (:endDate IS NULL OR m.date <= :endDate)
+            ORDER BY m.date DESC, m.id DESC
+            """)
+    List<Movement> findFiltered(
+            @Param("userId") Long userId,
+            @Param("type") MovementType type,
+            @Param("categoryId") Long categoryId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            Pageable pageable
     );
-
 
     @Query("SELECT COALESCE(SUM(m.amount), 0) FROM Movement m WHERE m.user.id = :userId AND m.type = :type")
     BigDecimal sumAmountByUserIdAndType(@Param("userId") Long userId, @Param("type") MovementType type);

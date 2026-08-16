@@ -47,7 +47,7 @@ public class MovementController {
     public ResponseEntity<MovementResponse> createMovement(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody CreateMovementRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         var response = movementService.createMovement(user.getId(), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -64,7 +64,7 @@ public class MovementController {
             @RequestParam(required = false) @Positive Long categoryId,
             @RequestParam(required = false) LocalDate startDate,
             @RequestParam(required = false) LocalDate endDate) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(movementService.getAllByFilters(user.getId(), type, categoryId, startDate, endDate));
     }
 
@@ -78,7 +78,7 @@ public class MovementController {
     public ResponseEntity<MovementResponse> getMovementById(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(movementService.getById(user.getId(), id));
     }
 
@@ -94,7 +94,7 @@ public class MovementController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id,
             @Valid @RequestBody CreateMovementRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(movementService.updateMovement(user.getId(), id, request));
     }
 
@@ -108,7 +108,7 @@ public class MovementController {
     public ResponseEntity<Void> deleteMovement(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         movementService.deleteMovement(user.getId(), id);
         return ResponseEntity.noContent().build();
     }

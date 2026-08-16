@@ -17,6 +17,9 @@ import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@d
 import { CSS } from '@dnd-kit/utilities';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
+import { getLocalStorageItem, setLocalStorageItem } from '../../utils/browserStorage';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 import type { BudgetRequest, BudgetResponse } from '../../types/budget.types';
 interface SortableBudgetCardProps {
   budget: BudgetResponse;
@@ -79,11 +82,13 @@ function SavingsCard({ globalBudget, onUpdateBudget }: {
   const [savingsValue, setSavingsValue] = useState<string>(globalBudget?.savingsValue ? String(globalBudget.savingsValue) : '');
   const [enabled, setEnabled] = useState<boolean>(globalBudget?.savingsValue != null);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const handleToggle = async () => {
     if (!globalBudget) return;
     const nextEnabled = !enabled;
     setEnabled(nextEnabled);
     if (!nextEnabled) {
+      setSaveError(null);
       setIsSaving(true);
       try {
         await onUpdateBudget({
@@ -99,6 +104,9 @@ function SavingsCard({ globalBudget, onUpdateBudget }: {
             savingsValue: undefined,
           }
         });
+      } catch (error: unknown) {
+        setEnabled(true);
+        setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
       } finally {
         setIsSaving(false);
       }
@@ -106,6 +114,16 @@ function SavingsCard({ globalBudget, onUpdateBudget }: {
   };
   const handleSave = async () => {
     if (!globalBudget || !savingsValue) return;
+    const parsedValue = parsePositiveMoney(savingsValue);
+    const isInvalid = parsedValue === null
+      || (savingsType === 'PERCENTAGE' && parsedValue > 100)
+      || (savingsType === 'FIXED' && parsedValue > globalBudget.totalAmount);
+    if (isInvalid) {
+      setSaveError(t('common.invalidAmount'));
+      return;
+    }
+
+    setSaveError(null);
     setIsSaving(true);
     try {
       await onUpdateBudget({
@@ -118,9 +136,11 @@ function SavingsCard({ globalBudget, onUpdateBudget }: {
           endDate: globalBudget.endDate,
           categoryId: globalBudget.categoryId ?? undefined,
           savingsType,
-          savingsValue: parseFloat(savingsValue),
+          savingsValue: parsedValue,
         }
       });
+    } catch (error: unknown) {
+      setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
     } finally {
       setIsSaving(false);
     }
@@ -186,6 +206,8 @@ function SavingsCard({ globalBudget, onUpdateBudget }: {
                 <input
                   type="number"
                   step={savingsType === 'PERCENTAGE' ? '1' : '0.01'}
+                  min="0.01"
+                  max={savingsType === 'PERCENTAGE' ? 100 : Math.min(MAX_MONEY_AMOUNT, globalBudget.totalAmount)}
                   placeholder={savingsType === 'PERCENTAGE' ? 'Ej: 20' : 'Ej: 1000'}
                   value={savingsValue}
                   onChange={(e) => setSavingsValue(e.target.value)}
@@ -205,10 +227,11 @@ function SavingsCard({ globalBudget, onUpdateBudget }: {
                 {t('budgets.apply')}
               </Button>
             </div>
+            {saveError ? <p className="text-xs text-rose-600 dark:text-rose-400">{saveError}</p> : null}
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400 bg-white/50 dark:bg-neutral-900/60 p-2 rounded-lg border border-neutral-100 dark:border-neutral-700">
-              {savingsType === 'PERCENTAGE' && savingsValue
+              {savingsType === 'PERCENTAGE' && parsePositiveMoney(savingsValue) !== null
                 ? t('budgets.autoReserve', {
-                    amount: formatCurrency(globalBudget.totalAmount * (parseFloat(savingsValue) / 100)),
+                    amount: formatCurrency(globalBudget.totalAmount * ((parsePositiveMoney(savingsValue) ?? 0) / 100)),
                   })
                 : t('budgets.protectedAmount')}
             </p>
@@ -220,13 +243,13 @@ function SavingsCard({ globalBudget, onUpdateBudget }: {
 }
 function loadCategoryBudgetOrder(): number[] {
   try {
-    const stored = localStorage.getItem('equio_category_budgets_order');
+    const stored = getLocalStorageItem('equio_category_budgets_order');
     if (!stored) return [];
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed) || !parsed.every((id) => Number.isSafeInteger(id) && id > 0)) {
       return [];
     }
-    return [...new Set(parsed as number[])];
+    return [...new Set(parsed as number[])].slice(0, 200);
   } catch {
     return [];
   }
@@ -242,13 +265,10 @@ export function BudgetsPage() {
   const [drawerIsGlobal, setDrawerIsGlobal] = useState(true);
   
   const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('budgetAdvancedMode') === 'true';
-    }
-    return false;
+    return getLocalStorageItem('budgetAdvancedMode') === 'true';
   });
   useEffect(() => {
-    localStorage.setItem('budgetAdvancedMode', String(isAdvancedMode));
+    setLocalStorageItem('budgetAdvancedMode', String(isAdvancedMode));
   }, [isAdvancedMode]);
   
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
@@ -285,11 +305,7 @@ export function BudgetsPage() {
   const saveCategoryBudgetOrder = (newOrder: BudgetResponse[]) => {
     const orderIds = newOrder.map((budget) => budget.id);
     setCategoryBudgetOrder(orderIds);
-    try {
-      localStorage.setItem('equio_category_budgets_order', JSON.stringify(orderIds));
-    } catch {
-      console.warn('Failed to save budget order');
-    }
+    setLocalStorageItem('equio_category_budgets_order', JSON.stringify(orderIds));
   };
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;

@@ -13,10 +13,6 @@ public interface CreateMovementService {
     
     MovementResponse getById(Long userId, Long movementId);
     
-    List<MovementResponse> getAllByUserId(Long userId);
     List<MovementResponse> getAllByFilters(Long userId, String type, Long categoryId, java.time.LocalDate startDate, java.time.LocalDate endDate);
-    List<MovementResponse> getAllByCategory(Long userId, Long categoryId);
-    List<MovementResponse> getAllByDateRange(Long userId, String startDate, String endDate);
-    List<MovementResponse> getAllByType(Long userId, String type);
 
 }

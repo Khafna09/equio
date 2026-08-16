@@ -8,6 +8,7 @@ import { authApi } from '../api/auth.api';
 import { clearAccessToken, setAccessToken } from '../api/tokenStore';
 import type { AuthResponse, AuthUser } from '../types/auth.types';
 import { AuthContext } from './authContextValue';
+import { removeLocalStorageItem } from '../utils/browserStorage';
 
 function toUser(session: AuthResponse): AuthUser {
   return {
@@ -26,8 +27,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    removeLocalStorageItem('token');
+    removeLocalStorageItem('user');
 
     let active = true;
     void authApi.restoreSession().then((session) => {

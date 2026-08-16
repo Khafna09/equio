@@ -19,7 +19,7 @@ public class User extends AuditableModel {
     private Long id;
     @Column(nullable = false, unique = true, length = 254)
     private String email;
-    @Column(nullable = false, length = 120)
+    @Column(nullable = false, length = 255)
     private String password;
     @Column(nullable = false)
     private boolean enabled = true;

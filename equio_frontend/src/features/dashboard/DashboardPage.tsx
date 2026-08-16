@@ -73,8 +73,8 @@ function getMovementDisplayInfo(
     }
   }
 
-  let title = '';
-  let subText = '';
+  let title: string;
+  let subText: string;
   let hasTooltip = false;
   let tooltipTitle = '';
   let tooltipContent = '';

@@ -17,9 +17,6 @@ import java.util.Locale;
 
 @Service
 public class AuthServiceImpl implements AuthService {
-    private static final String DUMMY_PASSWORD_HASH =
-            "$2a$12$7QJ6E0l9K4rjX5M6Hj.Q8eP1j8A9K8dFkCeQj1XqC1h5W9wYqUa7e";
-
     private final UserRepository userRepository;
     private final UserDetailsServiceImpl userDetailsService;
     private final PasswordEncoder passwordEncoder;
@@ -29,6 +26,7 @@ public class AuthServiceImpl implements AuthService {
     private final int loginRateLimit;
     private final int lockAttempts;
     private final Duration lockDuration;
+    private final String dummyPasswordHash;
 
     public AuthServiceImpl(
             UserRepository userRepository,
@@ -55,6 +53,8 @@ public class AuthServiceImpl implements AuthService {
         this.loginRateLimit = loginRateLimit;
         this.lockAttempts = lockAttempts;
         this.lockDuration = Duration.ofMinutes(lockMinutes);
+        this.dummyPasswordHash = passwordEncoder.encode(
+                "equio-dummy-password-for-timing-equalization");
     }
 
     @Override
@@ -65,7 +65,7 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(email).orElse(null);
 
         if (user == null) {
-            passwordEncoder.matches(request.password(), DUMMY_PASSWORD_HASH);
+            passwordEncoder.matches(request.password(), dummyPasswordHash);
             throw invalidCredentials();
         }
 
@@ -89,6 +89,10 @@ public class AuthServiceImpl implements AuthService {
         user.setFailedLoginAttempts(0);
         user.setLockedUntil(null);
         user.setLastLoginAt(now);
+        if (user.getPassword().startsWith("$2")
+                || user.getPassword().startsWith("{bcrypt}")) {
+            user.setPassword(passwordEncoder.encode(request.password()));
+        }
         userRepository.save(user);
 
         var refreshToken = refreshTokenService.issue(user, metadata);

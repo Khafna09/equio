@@ -55,7 +55,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     public SavingGoalResponse create(Long userId, SavingGoalRequest request) {
         rlsContext.setUserId(userId);
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException("User"));
 
         SavingGoal goal = new SavingGoal();
         goal.setName(request.name());
@@ -97,6 +97,10 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     public SavingGoalResponse update(Long userId, Long goalId, SavingGoalRequest request) {
         rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
+        if (request.targetAmount().compareTo(goal.getCurrentAmount()) < 0) {
+            throw new IllegalArgumentException(
+                    "The target amount cannot be lower than the current saved amount");
+        }
 
         goal.setName(request.name());
         goal.setTargetAmount(request.targetAmount());

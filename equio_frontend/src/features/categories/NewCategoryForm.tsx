@@ -7,6 +7,7 @@ import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContextValue';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { getLocalStorageItem, setLocalStorageItem } from '../../utils/browserStorage';
 
 const COLOR_FAMILIES = [
   { key: 'colorGreen', colors: ['#10B981', '#059669', '#047857', '#34D399', '#6EE7B7', '#14B8A6', '#0D9488', '#16A34A', '#15803D'] },
@@ -76,8 +77,19 @@ const USER_EMOJI_MEMORY_KEY = 'equio_user_emoji_memory';
 
 function getUserEmojiMemory(): Record<string, string> {
   try {
-    const data = localStorage.getItem(USER_EMOJI_MEMORY_KEY);
-    return data ? JSON.parse(data) : {};
+    const data = getLocalStorageItem(USER_EMOJI_MEMORY_KEY);
+    const parsed: unknown = data ? JSON.parse(data) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    const safeMemory: Record<string, string> = Object.create(null);
+    for (const [keyword, emoji] of Object.entries(parsed).slice(-100)) {
+      if (keyword.length <= 50
+          && typeof emoji === 'string'
+          && ALL_EMOJIS.includes(emoji)) {
+        safeMemory[keyword] = emoji;
+      }
+    }
+    return safeMemory;
   } catch {
     return {};
   }
@@ -86,13 +98,13 @@ function getUserEmojiMemory(): Record<string, string> {
 function saveUserEmojiMemory(keyword: string, emoji: string) {
   const normKey = normalizeText(keyword);
   if (!normKey) return;
-  try {
-    const memory = getUserEmojiMemory();
-    memory[normKey] = emoji;
-    localStorage.setItem(USER_EMOJI_MEMORY_KEY, JSON.stringify(memory));
-  } catch {
-    return;
+  const memory = getUserEmojiMemory();
+  memory[normKey] = emoji;
+  const keys = Object.keys(memory);
+  if (keys.length > 100) {
+    delete memory[keys[0]];
   }
+  setLocalStorageItem(USER_EMOJI_MEMORY_KEY, JSON.stringify(memory));
 }
 
 function suggestEmoji(name: string): string {
@@ -203,7 +215,7 @@ export function NewCategoryForm({ onSuccess, categoryToEdit }: NewCategoryFormPr
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="mt-2 flex flex-col gap-5">
-      <Input label={t('categories.nameLabel')} placeholder={t('categories.nameExample')} value={name} onChange={(e) => { const value = e.target.value; setName(value); if (!value.trim()) setIsManualIcon(false); setSubmitError(null); }} required />
+      <Input label={t('categories.nameLabel')} placeholder={t('categories.nameExample')} value={name} onChange={(e) => { const value = e.target.value; setName(value); if (!value.trim()) setIsManualIcon(false); setSubmitError(null); }} maxLength={50} required />
 
       {submitError && <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 text-xs font-semibold">{submitError}</div>}
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { translations, type AppLanguage } from '../i18n/translations';
+import { getLocalStorageItem } from '../utils/browserStorage';
 
 interface State {
   hasError: boolean;
@@ -11,7 +12,7 @@ interface Props {
 }
 
 function getStoredLanguage(): AppLanguage {
-  const stored = localStorage.getItem('equio_language');
+  const stored = getLocalStorageItem('equio_language');
   return stored === 'en' ? 'en' : 'es';
 }
 

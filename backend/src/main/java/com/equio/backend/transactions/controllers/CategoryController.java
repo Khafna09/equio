@@ -3,6 +3,7 @@ package com.equio.backend.transactions.controllers;
 import com.equio.backend.transactions.dto.requests.CategoryRequest;
 import com.equio.backend.transactions.dto.responses.CategoryResponse;
 import com.equio.backend.transactions.services.CategoryService;
+import com.equio.backend.shared.exceptions.UnauthorizedException;
 import com.equio.backend.users.entities.User;
 import com.equio.backend.users.services.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,10 +39,9 @@ public class CategoryController {
 
     private User getAuthenticatedUser(UserDetails userDetails) {
         if (userDetails == null) {
-            throw new IllegalArgumentException("No se encontró usuario en la sesión actual.");
+            throw new UnauthorizedException("Authentication is no longer valid.");
         }
-        return userService.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado en la base de datos. Por favor inicie sesión nuevamente."));
+        return userService.requireAuthenticated(userDetails.getUsername());
     }
 
     @Operation(summary = "Crear nueva categoría", description = "Crea una nueva categoría para el usuario autenticado")

@@ -12,7 +12,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
 import org.springframework.security.web.*;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.StaticHeadersWriter;
@@ -22,6 +24,7 @@ import org.springframework.security.web.util.matcher.*;
 import org.springframework.web.cors.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Configuration
 @EnableMethodSecurity
@@ -191,6 +194,21 @@ public class SecurityConfig {
         if (bcryptStrength < 10 || bcryptStrength > 14) {
             throw new IllegalStateException("BCrypt strength must be between 10 and 14");
         }
-        return new BCryptPasswordEncoder(bcryptStrength);
+        var legacyBcrypt = new BCryptPasswordEncoder(bcryptStrength);
+        var pbkdf2 = new Pbkdf2PasswordEncoder(
+                "",
+                16,
+                600_000,
+                Pbkdf2PasswordEncoder.SecretKeyFactoryAlgorithm.PBKDF2WithHmacSHA256
+        );
+        var encoder = new DelegatingPasswordEncoder(
+                "pbkdf2",
+                Map.of(
+                        "pbkdf2", pbkdf2,
+                        "bcrypt", legacyBcrypt
+                )
+        );
+        encoder.setDefaultPasswordEncoderForMatches(legacyBcrypt);
+        return encoder;
     }
 }

@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { useI18n } from '../../i18n/i18nContextValue';
 import type { BudgetResponse } from '../../types/budget.types';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 interface BudgetDrawerProps {
   isOpen: boolean;
@@ -79,7 +80,7 @@ function BudgetDrawerContent({
     onClose();
   };
 
-  const submitData = async () => {
+  const submitData = async (parsedAmount: number) => {
     setSubmitError(null);
     setIsSubmitting(true);
     try {
@@ -148,9 +149,14 @@ function BudgetDrawerContent({
         }
       }
 
+      if (!finalStartDate || !finalEndDate || finalStartDate > finalEndDate) {
+        setSubmitError(t('common.invalidForm'));
+        return;
+      }
+
       const data = {
-        name: isGlobal ? 'GLOBAL_BUDGET' : name,
-        totalAmount: parseFloat(amount),
+        name: isGlobal ? 'GLOBAL_BUDGET' : name.trim(),
+        totalAmount: parsedAmount,
         isFixed,
         startDate: finalStartDate,
         endDate: finalEndDate,
@@ -176,10 +182,20 @@ function BudgetDrawerContent({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount) return;
-    if (!isGlobal && (!categoryId || !name)) return;
-    if (!isAdvancedMode && isFixed && !isEditing && !futureRenewDay) return;
-    submitData();
+    const parsedAmount = parsePositiveMoney(amount);
+    if (parsedAmount === null) {
+      setSubmitError(t('common.invalidAmount'));
+      return;
+    }
+    if (!isGlobal && (!categoryId || !name.trim())) {
+      setSubmitError(t('common.invalidForm'));
+      return;
+    }
+    if (!isAdvancedMode && isFixed && !isEditing && !futureRenewDay) {
+      setSubmitError(t('common.invalidForm'));
+      return;
+    }
+    void submitData(parsedAmount);
   };
 
   const isGlobalDisabled = !isEditing && globalBudget != null;
@@ -206,6 +222,8 @@ function BudgetDrawerContent({
           <input
             type="number"
             step="0.01"
+            min="0.01"
+            max={MAX_MONEY_AMOUNT}
             placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -260,6 +278,7 @@ function BudgetDrawerContent({
                 placeholder={t('budgetDrawer.weekendExample')}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                maxLength={100}
                 required
               />
               <CategorySelector

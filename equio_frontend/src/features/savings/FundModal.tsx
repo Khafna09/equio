@@ -5,6 +5,8 @@ import { useSavings } from '../../hooks/useSavings';
 import type { SavingGoalResponse } from '../../types/saving.types';
 import confetti from 'canvas-confetti';
 import { useCurrency } from '../../hooks/useCurrency';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
 import { useI18n } from '../../i18n/i18nContextValue';
@@ -23,6 +25,7 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
   const { symbol, formatCurrency } = useCurrency();
   const [amount, setAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const currentGoal = goal;
 
   const isAdd = operation === 'ADD';
@@ -30,9 +33,13 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const numericAmount = parseFloat(amount);
-    if (!currentGoal || isNaN(numericAmount) || numericAmount <= 0) return;
+    const numericAmount = parsePositiveMoney(amount);
+    if (!currentGoal || numericAmount === null) {
+      setSubmitError(t('common.invalidAmount'));
+      return;
+    }
 
+    setSubmitError(null);
     setIsSubmitting(true);
     try {
       await fundGoal(currentGoal.id, {
@@ -50,8 +57,8 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
 
       onClose();
       setAmount('');
-    } catch {
-      alert(t('savings.updateError'));
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('savings.updateError')));
     } finally {
       setIsSubmitting(false);
     }
@@ -74,14 +81,31 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
           <input 
             type="number" 
             step="0.01"
+            min="0.01"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => {
+              setAmount(e.target.value);
+              setSubmitError(null);
+            }}
             placeholder="0.00"
             className="text-6xl font-bold text-center text-neutral-900 dark:text-white bg-transparent outline-none w-full placeholder:text-neutral-300 dark:placeholder:text-neutral-600"
             required
-            max={!isAdd ? currentGoal?.currentAmount : undefined}
+            max={currentGoal
+              ? Math.min(
+                  MAX_MONEY_AMOUNT,
+                  isAdd
+                    ? Math.max(0, currentGoal.targetAmount - currentGoal.currentAmount)
+                    : currentGoal.currentAmount,
+                )
+              : MAX_MONEY_AMOUNT}
           />
         </div>
+
+        {submitError ? (
+          <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+            {submitError}
+          </div>
+        ) : null}
 
         <Button 
           type="submit" 

@@ -80,6 +80,7 @@ export function RegisterPage() {
             <Input
               label={t('auth.email')}
               type="email"
+              autoComplete="email"
               icon={<Mail className="w-5 h-5" />}
               placeholder="name@example.com"
               value={email}
@@ -90,6 +91,7 @@ export function RegisterPage() {
             <Input
               label={t('auth.password')}
               type="password"
+              autoComplete="new-password"
               icon={<Lock className="w-5 h-5" />}
               placeholder="********"
               value={password}

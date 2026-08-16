@@ -1,11 +1,13 @@
 package com.equio.backend.images;
 
+import com.equio.backend.shared.exceptions.ExternalServiceException;
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.net.*;
 import java.net.http.HttpClient;
@@ -33,19 +35,24 @@ public class UnsplashImageService {
 
     public ImageSearchResponse findLandscapeImage(String query) {
         if (accessKey.isBlank()) {
-            throw new IllegalStateException("Image search is not configured.");
+            throw new ExternalServiceException("Image search is not available.");
         }
 
-        UnsplashSearchResponse response = restClient.get()
-                .uri(builder -> builder
-                        .path("/search/photos")
-                        .queryParam("query", query.trim())
-                        .queryParam("orientation", "landscape")
-                        .queryParam("per_page", 5)
-                        .build())
-                .header(HttpHeaders.AUTHORIZATION, "Client-ID " + accessKey)
-                .retrieve()
-                .body(UnsplashSearchResponse.class);
+        UnsplashSearchResponse response;
+        try {
+            response = restClient.get()
+                    .uri(builder -> builder
+                            .path("/search/photos")
+                            .queryParam("query", query.trim())
+                            .queryParam("orientation", "landscape")
+                            .queryParam("per_page", 5)
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, "Client-ID " + accessKey)
+                    .retrieve()
+                    .body(UnsplashSearchResponse.class);
+        } catch (RestClientException exception) {
+            throw new ExternalServiceException("Image search is temporarily unavailable.", exception);
+        }
 
         if (response == null || response.results() == null) {
             throw new ResourceNotFoundException("Image");

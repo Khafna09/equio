@@ -1,5 +1,6 @@
 package com.equio.backend.transactions.services;
 
+import com.equio.backend.shared.exceptions.BusinessConflictException;
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.transactions.dto.requests.CategoryRequest;
@@ -35,7 +36,7 @@ public class CategoryServiceImpl implements CategoryService {
     public CategoryResponse createCategory(Long userId, CategoryRequest request) {
         rlsContext.setUserId(userId);
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("User"));
 
         String trimmedName = request.name() != null ? request.name().trim() : "";
         if (trimmedName.isEmpty()) {
@@ -43,7 +44,8 @@ public class CategoryServiceImpl implements CategoryService {
         }
 
         if (categoryRepository.existsByNameIgnoreCaseAndUserId(trimmedName, userId)) {
-            throw new IllegalArgumentException("Ya existe una categoría con el nombre: " + trimmedName);
+            throw new BusinessConflictException(
+                    "Ya existe una categoría con el nombre: " + trimmedName);
         }
 
         String color = (request.color() != null && !request.color().isBlank()) ? request.color().trim() : "#6366F1";
@@ -90,7 +92,8 @@ public class CategoryServiceImpl implements CategoryService {
 
         if (!category.getName().equalsIgnoreCase(trimmedName) 
                 && categoryRepository.existsByNameIgnoreCaseAndUserId(trimmedName, userId)) {
-            throw new IllegalArgumentException("Ya existe una categoría con el nombre: " + trimmedName);
+            throw new BusinessConflictException(
+                    "Ya existe una categoría con el nombre: " + trimmedName);
         }
 
         String color = (request.color() != null && !request.color().isBlank()) ? request.color().trim() : "#6366F1";

@@ -1,6 +1,5 @@
 package com.equio.backend.users.services;
 
-import com.equio.backend.users.dto.requests.ProfileRequest;
 import com.equio.backend.users.entities.User;
 import com.equio.backend.users.dto.requests.SignUpRequest;
 
@@ -11,9 +10,8 @@ public interface UserService {
     Optional<User> findById(Long id);
     
     Optional<User> findByEmail(String email);
+
+    User requireAuthenticated(String email);
     
     User registerUser(SignUpRequest request);
-
-
-    User updateProfile(Long userId, ProfileRequest request);
 }

@@ -5,6 +5,8 @@ import { DatePicker } from '../../components/ui/DatePicker';
 import { Button } from '../../components/ui/Button';
 import { useSavings } from '../../hooks/useSavings';
 import { fetchUnsplashGoalImage } from '../../utils/unsplash';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 import type { SavingGoalResponse } from '../../types/saving.types';
 import { Trash2 } from 'lucide-react';
 
@@ -30,39 +32,53 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
   const [targetAmount, setTargetAmount] = useState(goal ? String(goal.targetAmount) : '');
   const [deadline, setDeadline] = useState(goal?.deadline?.substring(0, 10) ?? '');
   const [tag, setTag] = useState(goal?.tag ?? '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!goal || !name || !targetAmount) return;
+    if (!goal) return;
+    const cleanName = name.trim();
+    const parsedTarget = parsePositiveMoney(targetAmount);
+    if (!cleanName) {
+      setSubmitError(t('common.invalidForm'));
+      return;
+    }
+    if (parsedTarget === null) {
+      setSubmitError(t('common.invalidAmount'));
+      return;
+    }
+    if (parsedTarget < goal.currentAmount) {
+      setSubmitError(t('savings.targetBelowCurrent'));
+      return;
+    }
 
     const updatedData = {
-      name,
-      targetAmount: parseFloat(targetAmount),
+      name: cleanName,
+      targetAmount: parsedTarget,
       deadline: deadline || undefined,
-      tag: tag || undefined,
+      tag: tag.trim() || undefined,
     };
 
-    onClose();
-
-    (async () => {
-      try {
-        let imageUrl = goal.imageUrl;
-        if (updatedData.tag !== goal.tag || updatedData.name !== goal.name) {
-          const searchQuery = [updatedData.name, updatedData.tag].filter(Boolean).join(' ');
-          if (searchQuery) {
-            imageUrl = (await fetchUnsplashGoalImage(searchQuery)) || imageUrl;
-          }
+    setSubmitError(null);
+    setIsSubmitting(true);
+    try {
+      let imageUrl = goal.imageUrl;
+      if (updatedData.tag !== goal.tag || updatedData.name !== goal.name) {
+        const searchQuery = [updatedData.name, updatedData.tag].filter(Boolean).join(' ');
+        if (searchQuery) {
+          imageUrl = (await fetchUnsplashGoalImage(searchQuery)) || imageUrl;
         }
-
-        await updateGoal(goal.id, {
-          ...updatedData,
-          imageUrl
-        });
-      } catch {
-        alert(t('savings.updateError'));
       }
-    })();
+
+      await updateGoal(goal.id, { ...updatedData, imageUrl });
+      onClose();
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('savings.updateError')));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -70,11 +86,12 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
     if (!confirm(t('savings.deleteConfirm'))) return;
 
     setIsDeleting(true);
+    setSubmitError(null);
     try {
       await deleteGoal(goal.id);
       onClose();
-    } catch {
-      alert(t('savings.deleteError'));
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('savings.deleteError')));
     } finally {
       setIsDeleting(false);
     }
@@ -88,6 +105,7 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
           placeholder={t('savings.goalExample')} 
           value={name}
           onChange={(e) => setName(e.target.value)}
+          maxLength={100}
           required
         />
         
@@ -95,6 +113,8 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
           label={t('savings.targetAmount')} 
           type="number" 
           step="0.01"
+          min="0.01"
+          max={MAX_MONEY_AMOUNT}
           placeholder="0.00" 
           value={targetAmount}
           onChange={(e) => setTargetAmount(e.target.value)}
@@ -106,13 +126,20 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
           placeholder={t('savings.tagExample')} 
           value={tag}
           onChange={(e) => setTag(e.target.value.toUpperCase())}
-          maxLength={15}
+          maxLength={50}
         />
           <DatePicker
             label={t('savings.deadline')}
             value={deadline}
             onChange={setDeadline}
+            minDate={new Date()}
           />
+
+        {submitError ? (
+          <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+            {submitError}
+          </div>
+        ) : null}
 
         <div className="flex gap-3 mt-4">
           <Button 
@@ -130,6 +157,7 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
             variant="primary" 
             className="flex-1 py-3"
             disabled={isDeleting}
+            isLoading={isSubmitting}
           >
             {t('common.saveChanges')}
           </Button>

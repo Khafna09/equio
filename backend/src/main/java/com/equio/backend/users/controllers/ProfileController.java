@@ -30,7 +30,7 @@ public class ProfileController {
     @Operation(summary = "Obtener mi perfil", description = "Obtiene el perfil del usuario autenticado actualmente")
     @GetMapping("/me")
     public ResponseEntity<ProfileResponse> getMyProfile(@AuthenticationPrincipal UserDetails userDetails) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         var profile = profileService.getProfileByUserId(user.getId());
         return ResponseEntity.ok(new ProfileResponse(
                 profile.getId(),
@@ -48,7 +48,7 @@ public class ProfileController {
     public ResponseEntity<ProfileResponse> updateMyProfile(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody ProfileRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         var profile = profileService.updateProfile(user.getId(), request);
         return ResponseEntity.ok(new ProfileResponse(
                 profile.getId(),

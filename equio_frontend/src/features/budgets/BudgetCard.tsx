@@ -8,6 +8,8 @@ import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
 import type { BudgetResponse } from '../../types/budget.types';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 interface BudgetCardProps {
   budget: BudgetResponse;
@@ -26,15 +28,22 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [editAmount, setEditAmount] = useState(String(budget.totalAmount));
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSaveAmount = async () => {
-    const val = parseFloat(editAmount);
-    if (isNaN(val) || val <= 0) return;
+    const val = parsePositiveMoney(editAmount);
+    if (val === null) {
+      setSaveError(t('common.invalidAmount'));
+      return;
+    }
 
+    setSaveError(null);
     setIsSaving(true);
     try {
       await onUpdateAmount(val);
       setIsEditingAmount(false);
+    } catch (error: unknown) {
+      setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
     } finally {
       setIsSaving(false);
     }
@@ -149,6 +158,9 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 <span className="text-neutral-500 dark:text-neutral-400 font-medium">{t('common.of')}</span>
                 <input
                   type="number"
+                  min="0.01"
+                  max={MAX_MONEY_AMOUNT}
+                  step="0.01"
                   value={editAmount}
                   onChange={(e) => setEditAmount(e.target.value)}
                   className="w-20 px-2 py-1 text-sm bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded outline-none focus:border-primary-500 font-medium"
@@ -176,6 +188,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
             {budget.progressPercentage}%
           </span>
         </div>
+        {saveError ? <p className="mb-2 text-xs text-rose-600 dark:text-rose-400">{saveError}</p> : null}
         <ProgressBar percentage={budget.progressPercentage} />
       </div>
     </Card>

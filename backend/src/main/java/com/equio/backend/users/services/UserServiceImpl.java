@@ -4,6 +4,8 @@ import com.equio.backend.users.dto.requests.*;
 import com.equio.backend.users.entities.*;
 import com.equio.backend.users.entities.enums.Roles;
 import com.equio.backend.users.repositories.*;
+import com.equio.backend.shared.exceptions.BusinessConflictException;
+import com.equio.backend.shared.exceptions.UnauthorizedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,11 +39,17 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public User requireAuthenticated(String email) {
+        return findByEmail(email).orElseThrow(
+                () -> new UnauthorizedException("Authentication is no longer valid."));
+    }
+
+    @Override
     @Transactional
     public User registerUser(SignUpRequest request) {
         String email = normalizeEmail(request.email());
         if (userRepository.existsByEmail(email)) {
-            throw new IllegalStateException("The email address is already registered.");
+            throw new BusinessConflictException("The email address is already registered.");
         }
 
         var user = new User();
@@ -61,11 +69,6 @@ public class UserServiceImpl implements UserService {
         profile.setUser(user);
         user.setProfile(profile);
         return userRepository.save(user);
-    }
-
-    @Override
-    public User updateProfile(Long userId, ProfileRequest request) {
-        throw new UnsupportedOperationException("Use ProfileService to update profiles.");
     }
 
     private String normalizeEmail(String email) {

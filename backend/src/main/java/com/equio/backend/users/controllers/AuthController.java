@@ -43,15 +43,17 @@ public class AuthController {
     @PostMapping("/sign-up")
     public ResponseEntity<UserResponse> signUp(@Valid @RequestBody SignUpRequest request) {
         var user = userService.registerUser(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(new UserResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getProfile().getFirstName(),
-                user.getProfile().getLastName(),
-                user.getProfile().getLanguage(),
-                user.getProfile().getCurrency(),
-                user.getRoles().stream().map(role -> role.getName().name()).toList()
-        ));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .cacheControl(CacheControl.noStore())
+                .body(new UserResponse(
+                        user.getId(),
+                        user.getEmail(),
+                        user.getProfile().getFirstName(),
+                        user.getProfile().getLastName(),
+                        user.getProfile().getLanguage(),
+                        user.getProfile().getCurrency(),
+                        user.getRoles().stream().map(role -> role.getName().name()).toList()
+                ));
     }
 
     @PostMapping("/sign-in")

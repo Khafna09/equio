@@ -8,6 +8,8 @@ import { gsap } from 'gsap';
 import { Flip } from 'gsap/Flip';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 gsap.registerPlugin(Flip);
 gsap.registerPlugin(useGSAP);
@@ -25,11 +27,13 @@ export function InlineBudgetForm({ onSave, globalBudgetRemaining }: InlineBudget
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [amount, setAmount] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const amountVal = parseFloat(amount) || 0;
+  const parsedAmount = parsePositiveMoney(amount);
+  const amountVal = parsedAmount ?? 0;
   const isOverLimit = amountVal > globalBudgetRemaining;
 
   const categoryOptions = categories.map((c) => ({
@@ -56,7 +60,7 @@ export function InlineBudgetForm({ onSave, globalBudgetRemaining }: InlineBudget
   };
 
   const handleSave = async () => {
-    if (!categoryId || amountVal <= 0 || isOverLimit) {
+    if (!categoryId || parsedAmount === null || isOverLimit) {
       if (isOverLimit && inputRef.current) {
         gsap.fromTo(
           inputRef.current,
@@ -68,9 +72,12 @@ export function InlineBudgetForm({ onSave, globalBudgetRemaining }: InlineBudget
     }
 
     setIsSaving(true);
+    setSaveError(null);
     try {
-      await onSave(categoryId as number, amountVal);
+      await onSave(categoryId as number, parsedAmount);
       toggleExpand();
+    } catch (error: unknown) {
+      setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
     } finally {
       setIsSaving(false);
     }
@@ -122,6 +129,8 @@ export function InlineBudgetForm({ onSave, globalBudgetRemaining }: InlineBudget
                   ref={inputRef}
                   type="number"
                   step="0.01"
+                  min="0.01"
+                  max={MAX_MONEY_AMOUNT}
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className={`w-full px-3.5 py-2.5 bg-white dark:bg-neutral-900 border rounded-xl text-sm font-medium text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none transition-all ${isOverLimit ? 'border-red-400 focus:border-red-500 ring-2 ring-red-500/20' : 'border-neutral-200 dark:border-neutral-700 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20'}`}
@@ -129,11 +138,15 @@ export function InlineBudgetForm({ onSave, globalBudgetRemaining }: InlineBudget
                 />
               </div>
 
+              {saveError ? (
+                <p className="text-xs text-rose-600 dark:text-rose-400">{saveError}</p>
+              ) : null}
+
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={isSaving || isOverLimit || !categoryId || !amount}
+                  disabled={isSaving || isOverLimit || !categoryId || parsedAmount === null}
                   className="p-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-all shadow-sm active:scale-95"
                   title={t('budgets.saveSubBudget')}
                 >

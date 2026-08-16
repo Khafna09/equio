@@ -4,6 +4,7 @@ import com.equio.backend.budgets.entities.Budget;
 import com.equio.backend.budgets.entities.enums.BudgetStatus;
 import com.equio.backend.budgets.entities.enums.SavingsType;
 import com.equio.backend.budgets.repositories.BudgetRepository;
+import com.equio.backend.shared.exceptions.ReportTooLargeException;
 import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.transactions.entities.Category;
 import com.equio.backend.transactions.entities.Movement;
@@ -46,7 +47,8 @@ class BudgetHistoryReportServiceTest {
         movementRepository = mock(MovementRepository.class);
         categoryRepository = mock(CategoryRepository.class);
         rlsContext = mock(RlsContext.class);
-        service = new BudgetHistoryReportService(budgetRepository, movementRepository, categoryRepository, rlsContext);
+        service = new BudgetHistoryReportService(
+                budgetRepository, movementRepository, categoryRepository, rlsContext, 2000);
     }
 
     @Test
@@ -96,6 +98,11 @@ class BudgetHistoryReportServiceTest {
         when(budgetRepository.findByParentBudgetId(10L)).thenReturn(List.of(child));
         when(budgetRepository.findByUserIdAndStatus(1L, BudgetStatus.CLOSED)).thenReturn(List.of(global));
         when(categoryRepository.findByUserId(1L)).thenReturn(List.of(food, utilities));
+        when(movementRepository.countByUserIdAndDateBetween(
+                1L,
+                LocalDate.of(2026, 8, 1).atStartOfDay(),
+                LocalDate.of(2026, 8, 31).atTime(23, 59, 59)))
+                .thenReturn(4L);
         when(movementRepository.findByUserIdAndDateBetweenOrderByDateDesc(
                 1L,
                 LocalDate.of(2026, 8, 1).atStartOfDay(),
@@ -151,6 +158,24 @@ class BudgetHistoryReportServiceTest {
         when(budgetRepository.findByIdAndUserId(20L, 1L)).thenReturn(Optional.of(active));
 
         assertThrows(IllegalArgumentException.class, () -> service.getReport(1L, 20L));
+    }
+
+    @Test
+    void rejectsReportsThatExceedTheConfiguredMovementLimit() {
+        Budget closed = new Budget();
+        closed.setId(30L);
+        closed.setStatus(BudgetStatus.CLOSED);
+        closed.setStartDate(LocalDate.of(2026, 1, 1));
+        closed.setEndDate(LocalDate.of(2026, 1, 31));
+
+        when(budgetRepository.findByIdAndUserId(30L, 1L)).thenReturn(Optional.of(closed));
+        when(movementRepository.countByUserIdAndDateBetween(
+                1L,
+                LocalDate.of(2026, 1, 1).atStartOfDay(),
+                LocalDate.of(2026, 1, 31).atTime(23, 59, 59)))
+                .thenReturn(2001L);
+
+        assertThrows(ReportTooLargeException.class, () -> service.getReport(1L, 30L));
     }
 
     private Movement movement(Long id,

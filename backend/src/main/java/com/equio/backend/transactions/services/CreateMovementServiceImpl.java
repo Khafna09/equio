@@ -1,6 +1,7 @@
 package com.equio.backend.transactions.services;
 
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
+import com.equio.backend.shared.exceptions.ResultSetTooLargeException;
 import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.budgets.services.BudgetService;
 import com.equio.backend.transactions.dto.requests.CreateMovementRequest;
@@ -13,10 +14,13 @@ import com.equio.backend.transactions.repositories.MovementRepository;
 import com.equio.backend.users.entities.User;
 import com.equio.backend.users.repositories.UserRepository;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class CreateMovementServiceImpl implements CreateMovementService {
@@ -26,17 +30,24 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     private final CategoryRepository categoryRepository;
     private final BudgetService budgetService;
     private final RlsContext rlsContext;
+    private final int maxQueryResults;
 
     public CreateMovementServiceImpl(MovementRepository movementRepository,
                                      UserRepository userRepository,
                                      CategoryRepository categoryRepository,
                                      @Lazy BudgetService budgetService,
-                                     RlsContext rlsContext) {
+                                     RlsContext rlsContext,
+                                     @Value("${app.movements.max-query-results:5000}") int maxQueryResults) {
+        if (maxQueryResults < 100 || maxQueryResults > 10_000) {
+            throw new IllegalStateException(
+                    "Movement query result limit must be between 100 and 10000");
+        }
         this.movementRepository = movementRepository;
         this.userRepository = userRepository;
         this.categoryRepository = categoryRepository;
         this.budgetService = budgetService;
         this.rlsContext = rlsContext;
+        this.maxQueryResults = maxQueryResults;
     }
 
     @Override
@@ -44,7 +55,7 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     public MovementResponse createMovement(Long userId, CreateMovementRequest createMovementRequest) {
         rlsContext.setUserId(userId);
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User"));
 
         Movement movement = new Movement();
         movement.setAmount(createMovementRequest.amount());
@@ -53,7 +64,7 @@ public class CreateMovementServiceImpl implements CreateMovementService {
         movement.setDate(createMovementRequest.date());
         if (createMovementRequest.categoryId() != null) {
             Category category = categoryRepository.findByIdAndUserId(createMovementRequest.categoryId(), userId)
-                    .orElseThrow(() -> new IllegalArgumentException("Category not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Category"));
             movement.setCategory(category);
         }
 
@@ -69,16 +80,6 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public List<MovementResponse> getAllByUserId(Long userId) {
-        rlsContext.setUserId(userId);
-        return movementRepository.findByUserId(userId)
-                .stream()
-                .map(this::toResponse)
-                .toList();
-    }
-
-    @Override
     @Transactional
     public MovementResponse updateMovement(Long userId, Long movementId, CreateMovementRequest createMovementRequest) {
         rlsContext.setUserId(userId);
@@ -90,7 +91,7 @@ public class CreateMovementServiceImpl implements CreateMovementService {
         
         if (createMovementRequest.categoryId() != null) {
             Category category = categoryRepository.findByIdAndUserId(createMovementRequest.categoryId(), userId)
-                    .orElseThrow(() -> new IllegalArgumentException("Category not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Category"));
             movement.setCategory(category);
         } else {
             movement.setCategory(null);
@@ -122,35 +123,23 @@ public class CreateMovementServiceImpl implements CreateMovementService {
         if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new IllegalArgumentException("Start date cannot be after end date");
         }
-        return movementRepository.findByUserIdOrderByDateDescIdDesc(userId)
-                .stream()
-                .filter(m -> type == null || m.getType().name().equalsIgnoreCase(type))
-                .filter(m -> categoryId == null || (m.getCategory() != null && m.getCategory().getId().equals(categoryId)))
-                .filter(m -> startDate == null || !m.getDate().toLocalDate().isBefore(startDate))
-                .filter(m -> endDate == null || !m.getDate().toLocalDate().isAfter(endDate))
+        MovementType movementType = type == null
+                ? null
+                : MovementType.valueOf(type.toUpperCase(Locale.ROOT));
+        List<Movement> movements = movementRepository.findFiltered(
+                userId,
+                movementType,
+                categoryId,
+                startDate != null ? startDate.atStartOfDay() : null,
+                endDate != null ? endDate.atTime(23, 59, 59) : null,
+                PageRequest.of(0, maxQueryResults + 1)
+        );
+        if (movements.size() > maxQueryResults) {
+            throw new ResultSetTooLargeException(maxQueryResults);
+        }
+        return movements.stream()
                 .map(this::toResponse)
                 .toList();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<MovementResponse> getAllByCategory(Long userId, Long categoryId) {
-        rlsContext.setUserId(userId);
-        return List.of(); 
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<MovementResponse> getAllByDateRange(Long userId, String startDate, String endDate) {
-        rlsContext.setUserId(userId);
-        return List.of(); 
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<MovementResponse> getAllByType(Long userId, String type) {
-        rlsContext.setUserId(userId);
-        return List.of(); 
     }
 
     private Movement findMovementAndValidationOwner(Long userId, Long movementId) {

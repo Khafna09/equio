@@ -16,6 +16,7 @@ import { useCurrency } from '../../hooks/useCurrency';
 import { useTimeFormat } from '../../hooks/useTimeFormat';
 import { useI18n } from '../../i18n/i18nContextValue';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 interface EditMovementModalProps {
   isOpen: boolean;
@@ -84,8 +85,15 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
     e.preventDefault();
     if (!movement) return;
 
-    const parsedAmount = Math.abs(parseFloat(amount));
-    if (isNaN(parsedAmount) || parsedAmount <= 0) return;
+    const parsedAmount = parsePositiveMoney(amount);
+    if (parsedAmount === null) {
+      setSubmitError(t('common.invalidAmount'));
+      return;
+    }
+    if (date.getTime() > Date.now()) {
+      setSubmitError(t('common.invalidDate'));
+      return;
+    }
 
     setSubmitError(null);
     setIsSubmitting(true);
@@ -189,8 +197,9 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                   <span className={`text-3xl font-bold transition-colors ${type === 'EXPENSE' ? 'text-red-400' : 'text-emerald-400'}`}>{symbol}</span>
                   <input 
                     type="number" 
-                    min="0"
-                    step="1"
+                    min="0.01"
+                    max={MAX_MONEY_AMOUNT}
+                    step="0.01"
                     value={amount}
                     onChange={handleAmountChange}
                     placeholder="0"
@@ -279,6 +288,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                     placeholder={t('common.optionalNote')}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
+                    maxLength={150}
                     className="w-full pl-9 pr-3 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:border-primary-500"
                   />
                 </div>
@@ -306,7 +316,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                   variant="primary" 
                   className={`flex-1 py-3.5 text-base font-semibold transition-colors ${type === 'EXPENSE' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
                   isLoading={isSubmitting}
-                  disabled={!amount || parseFloat(amount) <= 0 || isDeleting}
+                  disabled={parsePositiveMoney(amount) === null || isDeleting}
                 >
                   {t('common.saveChanges')} &rarr;
                 </Button>

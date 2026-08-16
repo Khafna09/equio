@@ -63,7 +63,7 @@ public class DashboardController {
             @RequestParam(required = false) @Min(1) @Max(12) Integer month,
             @RequestParam(required = false) @Min(2000) @Max(2100) Integer year) {
 
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
 
         int targetMonth = (month != null) ? month : LocalDate.now().getMonthValue();
         int targetYear = (year != null) ? year : LocalDate.now().getYear();

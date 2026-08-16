@@ -3,7 +3,9 @@ package com.equio.backend.users.services;
 import com.equio.backend.users.dto.requests.ProfileRequest;
 import com.equio.backend.users.entities.Profile;
 import com.equio.backend.users.repositories.ProfileRepository;
+import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProfileServiceImpl implements ProfileService {
@@ -15,6 +17,7 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     @Override
+    @Transactional
     public Profile updateProfile(Long userId, ProfileRequest request) {
         if (request.firstName() == null && request.lastName() == null
                 && request.language() == null && request.currency() == null
@@ -29,13 +32,13 @@ public class ProfileServiceImpl implements ProfileService {
         }
 
         Profile profile = profileRepository.findByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Profile not found for user ID: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Profile"));
 
         if (request.firstName() != null) {
-            profile.setFirstName(request.firstName());
+            profile.setFirstName(request.firstName().trim());
         }
         if (request.lastName() != null) {
-            profile.setLastName(request.lastName());
+            profile.setLastName(request.lastName().trim());
         }
         if (request.language() != null) {
             profile.setLanguage(request.language());
@@ -52,8 +55,9 @@ public class ProfileServiceImpl implements ProfileService {
         return profileRepository.save(profile);
     }
     
+    @Transactional(readOnly = true)
     public Profile getProfileByUserId(Long userId) {
         return profileRepository.findByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Profile not found for user ID: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Profile"));
     }
 }

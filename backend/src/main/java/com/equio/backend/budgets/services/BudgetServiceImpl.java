@@ -1,5 +1,6 @@
 package com.equio.backend.budgets.services;
 
+import com.equio.backend.shared.exceptions.BusinessConflictException;
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.budgets.dto.requests.BudgetRequest;
@@ -56,7 +57,7 @@ public class BudgetServiceImpl implements BudgetService {
         rlsContext.setUserId(userId);
         validateSavings(request.totalAmount(), request.savingsType(), request.savingsValue());
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException("User"));
 
         if (request.startDate() == null) {
             throw new IllegalArgumentException("Todo presupuesto requiere una fecha de inicio (startDate)");
@@ -89,7 +90,8 @@ public class BudgetServiceImpl implements BudgetService {
             boolean hasActiveGlobal = budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.ACTIVE)
                     .stream().anyMatch(b -> b.getCategory() == null);
             if (hasActiveGlobal) {
-                throw new IllegalArgumentException("Ya existe un presupuesto global activo para este usuario.");
+                throw new BusinessConflictException(
+                        "Ya existe un presupuesto global activo para este usuario.");
             }
         }
 
@@ -256,7 +258,8 @@ public class BudgetServiceImpl implements BudgetService {
 
         // BR-5.4: Inmutabilidad del Historial
         if (budget.getStatus() == BudgetStatus.CLOSED) {
-            throw new IllegalArgumentException("No se permite modificar un presupuesto cerrado (historial).");
+            throw new BusinessConflictException(
+                    "No se permite modificar un presupuesto cerrado (historial).");
         }
 
         if (!request.isFixed() && (request.startDate() == null || request.endDate() == null)) {
@@ -265,7 +268,8 @@ public class BudgetServiceImpl implements BudgetService {
 
         // BR-4.3: Bloqueo de Modalidad
         if (budget.isFixed() != request.isFixed()) {
-            throw new IllegalArgumentException("No se permite cambiar la modalidad de un presupuesto activo. Debe cerrar el actual y crear uno nuevo.");
+            throw new BusinessConflictException(
+                    "No se permite cambiar la modalidad de un presupuesto activo. Debe cerrar el actual y crear uno nuevo.");
         }
 
         boolean isGlobal = budget.getCategory() == null;
@@ -365,7 +369,7 @@ public class BudgetServiceImpl implements BudgetService {
         rlsContext.setUserId(userId);
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
         if (budget.getStatus() == BudgetStatus.CLOSED) {
-            throw new IllegalArgumentException("El presupuesto ya está cerrado.");
+            throw new BusinessConflictException("El presupuesto ya está cerrado.");
         }
         
         budget.setStatus(BudgetStatus.CLOSED);

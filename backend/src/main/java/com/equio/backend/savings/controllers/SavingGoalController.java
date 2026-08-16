@@ -64,7 +64,7 @@ public class SavingGoalController {
     public ResponseEntity<SavingGoalResponse> create(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody SavingGoalRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED).body(savingGoalService.create(user.getId(), request));
     }
 
@@ -79,7 +79,7 @@ public class SavingGoalController {
     @GetMapping
     public ResponseEntity<List<SavingGoalResponse>> getAll(
             @AuthenticationPrincipal UserDetails userDetails) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(savingGoalService.getAllByUser(user.getId()));
     }
 
@@ -96,7 +96,7 @@ public class SavingGoalController {
     public ResponseEntity<SavingGoalResponse> getById(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(savingGoalService.getById(user.getId(), id));
     }
 
@@ -127,7 +127,7 @@ public class SavingGoalController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id,
             @Valid @RequestBody SavingGoalRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(savingGoalService.update(user.getId(), id, request));
     }
 
@@ -161,7 +161,7 @@ public class SavingGoalController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id,
             @Valid @RequestBody FundRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(savingGoalService.addOrWithdrawFund(user.getId(), id, request));
     }
 
@@ -178,7 +178,7 @@ public class SavingGoalController {
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         savingGoalService.delete(user.getId(), id);
         return ResponseEntity.noContent().build();
     }

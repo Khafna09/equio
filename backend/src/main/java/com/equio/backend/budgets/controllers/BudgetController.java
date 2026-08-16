@@ -16,6 +16,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.http.ContentDisposition;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -82,7 +83,7 @@ public class BudgetController {
     public ResponseEntity<BudgetResponse> create(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody BudgetRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED).body(budgetService.create(user.getId(), request));
     }
 
@@ -97,7 +98,7 @@ public class BudgetController {
     @GetMapping
     public ResponseEntity<List<BudgetResponse>> getAll(
             @AuthenticationPrincipal UserDetails userDetails) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(budgetService.getAllByUser(user.getId()));
     }
 
@@ -112,7 +113,7 @@ public class BudgetController {
     @GetMapping("/history")
     public ResponseEntity<List<BudgetResponse>> getHistory(
             @AuthenticationPrincipal UserDetails userDetails) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(budgetService.getHistoryByUser(user.getId()));
     }
 
@@ -124,8 +125,10 @@ public class BudgetController {
     public ResponseEntity<BudgetHistoryReportResponse> getHistoryReport(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
-        return ResponseEntity.ok(budgetHistoryReportService.getReport(user.getId(), id));
+        var user = userService.requireAuthenticated(userDetails.getUsername());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(budgetHistoryReportService.getReport(user.getId(), id));
     }
 
     @Operation(
@@ -136,7 +139,7 @@ public class BudgetController {
     public ResponseEntity<byte[]> downloadHistoryReport(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         BudgetHistoryReportResponse report = budgetHistoryReportService.getReport(user.getId(), id);
         byte[] pdf = budgetHistoryPdfService.generate(user.getId(), report);
         String disposition = ContentDisposition.attachment()
@@ -145,6 +148,7 @@ public class BudgetController {
                 .toString();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
+                .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.APPLICATION_PDF)
                 .contentLength(pdf.length)
                 .body(pdf);
@@ -162,7 +166,7 @@ public class BudgetController {
     public ResponseEntity<BudgetResponse> getById(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(budgetService.getById(user.getId(), id));
     }
 
@@ -196,7 +200,7 @@ public class BudgetController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id,
             @Valid @RequestBody BudgetRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(budgetService.update(user.getId(), id, request));
     }
 
@@ -214,7 +218,7 @@ public class BudgetController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id,
             @RequestParam(defaultValue = "false") boolean cascade) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         budgetService.delete(user.getId(), id, cascade);
         return ResponseEntity.noContent().build();
     }
@@ -232,7 +236,7 @@ public class BudgetController {
     public ResponseEntity<BudgetResponse> closeBudget(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(budgetService.closeBudget(user.getId(), id));
     }
 }

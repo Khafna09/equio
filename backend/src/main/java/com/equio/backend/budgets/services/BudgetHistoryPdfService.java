@@ -1,6 +1,7 @@
 package com.equio.backend.budgets.services;
 
 import com.equio.backend.budgets.dto.responses.BudgetHistoryReportResponse;
+import com.equio.backend.shared.exceptions.ReportGenerationException;
 import com.equio.backend.users.entities.Profile;
 import com.equio.backend.users.repositories.ProfileRepository;
 import com.equio.backend.shared.security.RlsContext;
@@ -225,8 +226,8 @@ public class BudgetHistoryPdfService {
             }
 
             return writer.toByteArray();
-        } catch (IOException exception) {
-            throw new IllegalStateException("Could not generate budget history PDF", exception);
+        } catch (IOException | RuntimeException exception) {
+            throw new ReportGenerationException(exception);
         }
     }
 

@@ -49,6 +49,35 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler({ReportTooLargeException.class, ResultSetTooLargeException.class})
+    ResponseEntity<Map<String, Object>> reportTooLarge(
+            RuntimeException exception,
+            HttpServletRequest request
+    ) {
+        return response(HttpStatus.CONTENT_TOO_LARGE, exception.getMessage(), request, null);
+    }
+
+    @ExceptionHandler(ExternalServiceException.class)
+    ResponseEntity<Map<String, Object>> externalServiceUnavailable(
+            ExternalServiceException exception,
+            HttpServletRequest request
+    ) {
+        LOGGER.warn("External service request failed requestId={} type={}",
+                MDC.get("requestId"), exception.getCause() != null
+                        ? exception.getCause().getClass().getSimpleName()
+                        : exception.getClass().getSimpleName());
+        return response(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request, null);
+    }
+
+    @ExceptionHandler(ReportGenerationException.class)
+    ResponseEntity<Map<String, Object>> reportGenerationFailed(
+            ReportGenerationException exception,
+            HttpServletRequest request
+    ) {
+        LOGGER.error("Report generation failed requestId={}", MDC.get("requestId"), exception);
+        return response(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), request, null);
+    }
+
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             ConstraintViolationException.class,
@@ -78,7 +107,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({
-            IllegalStateException.class,
+            BusinessConflictException.class,
             DataIntegrityViolationException.class,
             ObjectOptimisticLockingFailureException.class
     })
@@ -86,7 +115,7 @@ public class GlobalExceptionHandler {
             RuntimeException exception,
             HttpServletRequest request
     ) {
-        String message = exception instanceof IllegalStateException
+        String message = exception instanceof BusinessConflictException
                 ? exception.getMessage()
                 : "The requested operation conflicts with the current state.";
         return response(HttpStatus.CONFLICT, message, request, null);
@@ -97,7 +126,7 @@ public class GlobalExceptionHandler {
             Exception exception,
             HttpServletRequest request
     ) {
-        LOGGER.error("Unhandled request failure", exception);
+        LOGGER.error("Unhandled request failure requestId={}", MDC.get("requestId"), exception);
         return response(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred.",

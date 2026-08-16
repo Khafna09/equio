@@ -6,12 +6,14 @@ import com.equio.backend.budgets.entities.enums.BudgetStatus;
 import com.equio.backend.budgets.entities.enums.SavingsType;
 import com.equio.backend.budgets.repositories.BudgetRepository;
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
+import com.equio.backend.shared.exceptions.ReportTooLargeException;
 import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.transactions.entities.Category;
 import com.equio.backend.transactions.entities.Movement;
 import com.equio.backend.transactions.entities.enums.MovementType;
 import com.equio.backend.transactions.repositories.CategoryRepository;
 import com.equio.backend.transactions.repositories.MovementRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,15 +41,21 @@ public class BudgetHistoryReportService {
     private final MovementRepository movementRepository;
     private final CategoryRepository categoryRepository;
     private final RlsContext rlsContext;
+    private final int maxReportMovements;
 
     public BudgetHistoryReportService(BudgetRepository budgetRepository,
                                       MovementRepository movementRepository,
                                       CategoryRepository categoryRepository,
-                                      RlsContext rlsContext) {
+                                      RlsContext rlsContext,
+                                      @Value("${app.reports.max-movements:2000}") int maxReportMovements) {
+        if (maxReportMovements < 100 || maxReportMovements > 10_000) {
+            throw new IllegalStateException("Report movement limit must be between 100 and 10000");
+        }
         this.budgetRepository = budgetRepository;
         this.movementRepository = movementRepository;
         this.categoryRepository = categoryRepository;
         this.rlsContext = rlsContext;
+        this.maxReportMovements = maxReportMovements;
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +72,7 @@ public class BudgetHistoryReportService {
 
         LocalDate startDate = budget.getStartDate();
         LocalDate endDate = budget.getEndDate();
-        List<Movement> movements = getMovements(userId, startDate, endDate);
+        List<Movement> movements = getMovements(userId, startDate, endDate, true);
         List<Movement> expenses = movements.stream()
                 .filter(movement -> movement.getType() == MovementType.EXPENSE)
                 .toList();
@@ -116,7 +124,8 @@ public class BudgetHistoryReportService {
                 .filter(movement -> isWeekend(movement.getDate().toLocalDate()))
                 .map(Movement::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        double weekendExpensePercentage = percentage(weekendExpenses, totalExpenses);        Map<DayOfWeek, BigDecimal> expensesByWeekday = new HashMap<>();
+        double weekendExpensePercentage = percentage(weekendExpenses, totalExpenses);
+        Map<DayOfWeek, BigDecimal> expensesByWeekday = new HashMap<>();
         for (Movement expense : expenses) {
             expensesByWeekday.merge(expense.getDate().getDayOfWeek(), expense.getAmount(), BigDecimal::add);
         }
@@ -175,9 +184,23 @@ public class BudgetHistoryReportService {
         );
     }
 
-    private List<Movement> getMovements(Long userId, LocalDate startDate, LocalDate endDate) {
+    private List<Movement> getMovements(
+            Long userId,
+            LocalDate startDate,
+            LocalDate endDate,
+            boolean failWhenTooLarge
+    ) {
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(23, 59, 59);
+        long movementCount = movementRepository.countByUserIdAndDateBetween(userId, start, end);
+        if (movementCount > maxReportMovements) {
+            if (failWhenTooLarge) {
+                throw new ReportTooLargeException(maxReportMovements);
+            }
+            return null;
+        }
         return movementRepository.findByUserIdAndDateBetweenOrderByDateDesc(
-                userId, startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
+                userId, start, end);
     }
 
     private List<BudgetHistoryReportResponse.CategoryConsumption> buildCategories(
@@ -275,7 +298,11 @@ public class BudgetHistoryReportService {
                 .orElse(null);
         if (previous == null) return null;
 
-        List<Movement> previousExpenses = getMovements(userId, previous.getStartDate(), previous.getEndDate()).stream()
+        List<Movement> previousMovements = getMovements(
+                userId, previous.getStartDate(), previous.getEndDate(), false);
+        if (previousMovements == null) return null;
+
+        List<Movement> previousExpenses = previousMovements.stream()
                 .filter(movement -> movement.getType() == MovementType.EXPENSE)
                 .toList();
         BigDecimal previousTotal = sumAmounts(previousExpenses);

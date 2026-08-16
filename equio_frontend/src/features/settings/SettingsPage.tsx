@@ -11,6 +11,7 @@ import { CategoriesManager } from '../categories/CategoriesManager';
 import { Save, User, LayoutGrid } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContextValue';
 import type { ProfileRequest, ProfileResponse } from '../../api/profile.api';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 export function SettingsPage() {
   const profileState = useProfile();
@@ -48,16 +49,30 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
   const [timeFormat, setTimeFormat] = useState<'12' | '24'>(profile.timeFormat || '24');
   const [isSavingPersonal, setIsSavingPersonal] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanFirstName = firstName.trim();
+    const cleanLastName = lastName.trim();
+    const validName = /^[\p{L}\p{M} .'-]+$/u;
+    if (!cleanFirstName || !cleanLastName
+        || !validName.test(cleanFirstName)
+        || !validName.test(cleanLastName)) {
+      setSaveError(t('common.invalidForm'));
+      return;
+    }
+
+    setSaveError(null);
     setIsSavingPersonal(true);
     try {
-      await updateProfile({ firstName, lastName });
+      await updateProfile({ firstName: cleanFirstName, lastName: cleanLastName });
+      setFirstName(cleanFirstName);
+      setLastName(cleanLastName);
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
-    } catch {
-      alert(t('settings.saveError'));
+    } catch (error: unknown) {
+      setSaveError(getApiErrorMessage(error, t('settings.saveError')));
     } finally {
       setIsSavingPersonal(false);
     }
@@ -65,10 +80,11 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
 
   const persistPreference = async (data: ProfileRequest) => {
     try {
+      setSaveError(null);
       await updateProfile(data);
       return true;
-    } catch {
-      alert(t('settings.saveError'));
+    } catch (error: unknown) {
+      setSaveError(getApiErrorMessage(error, t('settings.saveError')));
       return false;
     }
   };
@@ -132,12 +148,17 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
 
         <TabsContent value="profile">
           <Card className="p-8 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
+            {saveError ? (
+              <div className="mb-5 rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+                {saveError}
+              </div>
+            ) : null}
             <form onSubmit={handleSaveProfile} className="space-y-8">
               <div>
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">{t('settings.personalData')}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input label={t('auth.firstName')} value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
-                  <Input label={t('auth.lastName')} value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+                  <Input label={t('auth.firstName')} value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={50} required />
+                  <Input label={t('auth.lastName')} value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={50} required />
                 </div>
                 <div className="mt-4 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700">
                   <p className="font-medium text-neutral-900 dark:text-white mb-1">{t('settings.email')}</p>

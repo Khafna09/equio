@@ -40,7 +40,8 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jackson</artifactId>
-        </dependency>        <dependency>
+        </dependency>
+        <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>${pdfbox.version}</version>

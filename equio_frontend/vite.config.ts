@@ -22,9 +22,17 @@ const securityHeaders = {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiUrl = env.VITE_API_BASE_URL || 'http://localhost:8081/api/v1';
+  const parsedApiUrl = apiUrl.startsWith('/') ? null : new URL(apiUrl);
+  const isLocalApi = parsedApiUrl != null
+    && ['localhost', '127.0.0.1', '[::1]'].includes(parsedApiUrl.hostname);
+  if (mode === 'production'
+      && parsedApiUrl?.protocol !== 'https:'
+      && !isLocalApi) {
+    throw new Error('VITE_API_BASE_URL must use HTTPS outside local development');
+  }
   const apiOrigin = apiUrl.startsWith('/')
     ? "'self'"
-    : new URL(apiUrl).origin;
+    : parsedApiUrl!.origin;
   const connectSources = mode === 'development'
     ? `${apiOrigin} ws://localhost:*`
     : apiOrigin;

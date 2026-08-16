@@ -3,6 +3,7 @@ import { Moon, Sun } from "lucide-react";
 import { flushSync } from "react-dom";
 import { cn } from "../../utils/classNames";
 import { useI18n } from "../../i18n/i18nContextValue";
+import { setLocalStorageItem } from "../../utils/browserStorage";
 
 interface ViewTransitionHandle {
   ready: Promise<void>;
@@ -220,7 +221,7 @@ export const AnimatedThemeToggler = ({
         onThemeChange?.(newTheme ? "dark" : "light");
       } else {
         setInternalIsDark(newTheme);
-        localStorage.setItem("theme", newTheme ? "dark" : "light");
+        setLocalStorageItem("theme", newTheme ? "dark" : "light");
       }
     };
 

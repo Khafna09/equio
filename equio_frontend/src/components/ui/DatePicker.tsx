@@ -13,6 +13,7 @@ interface DatePickerProps {
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  minDate?: Date;
 }
 
 export function DatePicker({
@@ -21,6 +22,7 @@ export function DatePicker({
   onChange,
   placeholder,
   disabled = false,
+  minDate,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const { language, t } = useI18n();
@@ -67,6 +69,7 @@ export function DatePicker({
                   onChange(format(nextDate, 'yyyy-MM-dd'));
                   setOpen(false);
                 }}
+                disabled={minDate ? { before: minDate } : undefined}
                 locale={locale}
               />
             </Popover.Content>

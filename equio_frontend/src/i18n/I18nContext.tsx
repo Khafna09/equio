@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { translations, type AppLanguage } from './translations';
 import { I18nContext, type I18nContextValue } from './i18nContextValue';
+import { getLocalStorageItem, setLocalStorageItem } from '../utils/browserStorage';
 
 type TranslationLeaf = string;
 
@@ -40,7 +41,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       return 'es';
     }
 
-    const stored = localStorage.getItem('equio_language');
+    const stored = getLocalStorageItem('equio_language');
     if (stored === 'es' || stored === 'en') {
       return stored;
     }
@@ -50,7 +51,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const setLanguage = (nextLanguage: AppLanguage) => {
     setLanguageState(nextLanguage);
-    localStorage.setItem('equio_language', nextLanguage);
+    setLocalStorageItem('equio_language', nextLanguage);
   };
 
   useEffect(() => {
