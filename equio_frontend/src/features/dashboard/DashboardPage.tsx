@@ -11,7 +11,8 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card';
 import { ShinyButton } from '../../components/ui/shiny-button';
-import { parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, isToday, isYesterday, isThisYear } from 'date-fns';
+import { es, enUS } from 'date-fns/locale';
 import { SplitText } from '../../components/reactbits/split-text';
 import { useAuth } from '../../contexts/authContextValue';
 import { cn } from '../../utils/classNames';
@@ -23,43 +24,92 @@ import { useI18n } from '../../i18n/i18nContextValue';
 import type { MovementResponse } from '../../types/movement.types';
 
 
-function formatMovementSubtitle(mov: MovementResponse, formatTime: (date: Date) => string) {
+function getMovementDisplayInfo(
+  mov: MovementResponse,
+  formatTime: (date: Date) => string,
+  t: (key: string, params?: Record<string, string | number>) => string,
+  language: 'es' | 'en'
+) {
   const note = mov.description?.trim() ?? '';
   const hasNote = note.length > 0;
+  const hasCategory = Boolean(mov.categoryName?.trim());
 
-  let timeStr = '';
+  let dateTimeStr = '';
   const dateStr = mov.date || mov.createdAt;
+
   if (dateStr) {
+    let timeStr = '';
+    let dateLabel = '';
+
     try {
       const d = parseISO(dateStr);
       if (isValid(d)) {
         timeStr = formatTime(d);
+
+        if (isToday(d)) {
+          dateLabel = t('history.today');
+        } else if (isYesterday(d)) {
+          dateLabel = t('history.yesterday');
+        } else if (isThisYear(d)) {
+          dateLabel = format(d, language === 'en' ? 'MMM d' : 'd MMM', { locale: language === 'en' ? enUS : es });
+        } else {
+          dateLabel = format(d, language === 'en' ? 'MMM d, yyyy' : 'd MMM yyyy', { locale: language === 'en' ? enUS : es });
+        }
       }
     } catch {
       timeStr = '';
+      dateLabel = '';
     }
+
     if (!timeStr && typeof dateStr === 'string') {
       const match = dateStr.match(/T(\d{2}:\d{2})/);
       if (match) timeStr = match[1];
     }
+
+    if (dateLabel && timeStr) {
+      dateTimeStr = `${dateLabel} · ${timeStr}`;
+    } else {
+      dateTimeStr = dateLabel || timeStr;
+    }
   }
 
-  if (!hasNote) {
-    return {
-      hasNote: false,
-      text: timeStr,
-      fullText: ''
-    };
-  }
+  let title = '';
+  let subText = '';
+  let hasTooltip = false;
+  let tooltipTitle = '';
+  let tooltipContent = '';
 
-  const words = note.split(/\s+/);
-  const truncatedNote = words.length > 6 ?words.slice(0, 6).join(' ') + '...' : note;
-  const prefix = timeStr ?`${timeStr} | ` : '';
+  if (hasCategory) {
+    title = mov.categoryName!;
+    if (hasNote) {
+      const words = note.split(/\s+/);
+      const truncatedNote = words.length > 6 ? words.slice(0, 6).join(' ') + '...' : note;
+      subText = dateTimeStr ? `${dateTimeStr} | ${truncatedNote}` : truncatedNote;
+      hasTooltip = true;
+      tooltipTitle = mov.categoryName!;
+      tooltipContent = note;
+    } else {
+      subText = dateTimeStr;
+    }
+  } else {
+    if (hasNote) {
+      title = note;
+      subText = dateTimeStr;
+      hasTooltip = false;
+      tooltipTitle = mov.type === 'INCOME' ? t('common.otherIncome') : t('common.otherExpenses');
+      tooltipContent = note;
+    } else {
+      title = mov.type === 'INCOME' ? t('common.otherIncome') : t('common.otherExpenses');
+      subText = dateTimeStr;
+    }
+  }
 
   return {
-    hasNote: true,
-    text: `${prefix}${truncatedNote}`,
-    fullText: `${note}`
+    title,
+    subText,
+    hasTooltip,
+    tooltipTitle,
+    tooltipContent,
   };
 }
 
@@ -136,7 +186,7 @@ export function DashboardPage() {
   const { user } = useAuth();
   const { formatCurrency } = useCurrency();
   const { formatTime } = useTimeFormat();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [isNewMovementOpen, setIsNewMovementOpen] = useState(false);
   const { triggerRect, captureTrigger } = useSharedElementModal();
   const [isSavingsExpanded, setIsSavingsExpanded] = useState(false);
@@ -307,7 +357,7 @@ export function DashboardPage() {
           ) : recentMovements && recentMovements.length > 0 ?(
             <div className="space-y-1.5">
               {recentMovements.map((mov) => {
-                const subInfo = formatMovementSubtitle(mov, formatTime);
+                const display = getMovementDisplayInfo(mov, formatTime, t, language);
 
                 const cardContent = (
                   <div
@@ -318,9 +368,9 @@ export function DashboardPage() {
                         className="w-10 h-10 rounded-2xl flex items-center justify-center text-base flex-shrink-0"
                         style={{ backgroundColor: `${mov.categoryColor || '#10B981'}20` }}
                       >
-                        {mov.categoryIcon ?(
+                        {mov.categoryIcon ? (
                           <span>{mov.categoryIcon}</span>
-                        ) : mov.type === 'INCOME' ?(
+                        ) : mov.type === 'INCOME' ? (
                           <TrendingUp className="w-4 h-4 text-emerald-500" />
                         ) : (
                           <TrendingDown className="w-4 h-4 text-danger-500" />
@@ -328,25 +378,25 @@ export function DashboardPage() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-neutral-900 dark:text-white text-sm truncate">
-                          {mov.categoryName ?? t('common.uncategorized')}
+                          {display.title}
                         </p>
-                        {subInfo.text && (
+                        {display.subText && (
                           <p className="text-xs truncate text-neutral-500 dark:text-neutral-400">
-                            {subInfo.text}
+                            {display.subText}
                           </p>
                         )}
                       </div>
                     </div>
                     <div
-                      className={`font-bold text-sm flex-shrink-0 whitespace-nowrap ml-4 ${mov.type === 'INCOME' ?'text-emerald-600 dark:text-emerald-400' : 'text-danger-600 dark:text-rose-400'}`}
+                      className={`font-bold text-sm flex-shrink-0 whitespace-nowrap ml-4 ${mov.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-danger-600 dark:text-rose-400'}`}
                     >
-                      {mov.type === 'INCOME' ?'+' : '-'}
+                      {mov.type === 'INCOME' ? '+' : '-'}
                       {formatCurrency(mov.amount)}
                     </div>
                   </div>
                 );
 
-                if (!subInfo.hasNote) {
+                if (!display.hasTooltip) {
                   return <div key={mov.id}>{cardContent}</div>;
                 }
 
@@ -357,8 +407,8 @@ export function DashboardPage() {
                     </HoverCardTrigger>
                     <HoverCardContent side="top" className="w-64 border-none shadow-xl dark:bg-neutral-800 dark:text-white">
                       <div className="space-y-1">
-                        <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{mov.categoryName ?? t('common.uncategorized')}</h4>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">{subInfo.fullText}</p>
+                        <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{display.tooltipTitle}</h4>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">{display.tooltipContent}</p>
                       </div>
                     </HoverCardContent>
                   </HoverCard>

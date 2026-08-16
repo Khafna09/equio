@@ -201,9 +201,14 @@ function DraggableFilter({
   );
 }
 
-function formatMovementSubtitle(mov: MovementResponse, formatTime: (date: Date) => string) {
+function getMovementDisplayInfo(
+  mov: MovementResponse,
+  formatTime: (date: Date) => string,
+  t: (key: string, params?: Record<string, string | number>) => string
+) {
   const note = mov.description?.trim() ?? '';
   const hasNote = note.length > 0;
+  const hasCategory = Boolean(mov.categoryName?.trim());
 
   let timeStr = '';
   const dateStr = mov.date || mov.createdAt;
@@ -222,20 +227,41 @@ function formatMovementSubtitle(mov: MovementResponse, formatTime: (date: Date) 
     }
   }
 
-  if (!hasNote) {
-    return {
-      hasNote: false,
-      text: timeStr,
-      fullText: ''
-    };
+  let title = '';
+  let subText = '';
+  let hasTooltip = false;
+  let tooltipTitle = '';
+  let tooltipContent = '';
+
+  if (hasCategory) {
+    title = mov.categoryName!;
+    if (hasNote) {
+      subText = timeStr ? `${timeStr} | ${note}` : note;
+      hasTooltip = true;
+      tooltipTitle = mov.categoryName!;
+      tooltipContent = timeStr ? `${timeStr} | ${note}` : note;
+    } else {
+      subText = timeStr;
+    }
+  } else {
+    if (hasNote) {
+      title = note;
+      subText = timeStr;
+      hasTooltip = false;
+      tooltipTitle = mov.type === 'INCOME' ? t('common.otherIncome') : t('common.otherExpenses');
+      tooltipContent = note;
+    } else {
+      title = mov.type === 'INCOME' ? t('common.otherIncome') : t('common.otherExpenses');
+      subText = timeStr;
+    }
   }
 
-  const prefix = timeStr ? `${timeStr} | ` : '';
-
   return {
-    hasNote: true,
-    text: `${prefix}${note}`,
-    fullText: `${prefix}${note}`
+    title,
+    subText,
+    hasTooltip,
+    tooltipTitle,
+    tooltipContent,
   };
 }
 
@@ -316,7 +342,7 @@ function MovementList({
               </h4>
               <StaggeredEntry className="space-y-2">
                 {movs.map((mov) => {
-                  const subInfo = formatMovementSubtitle(mov, formatTime);
+                  const display = getMovementDisplayInfo(mov, formatTime, t);
 
                   const cardContent = (
                     <button
@@ -333,10 +359,10 @@ function MovementList({
                             {mov.categoryIcon || (mov.type === 'INCOME' ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-rose-500" />)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-neutral-900 dark:text-white text-sm leading-tight">{mov.categoryName ?? t('common.uncategorized')}</p>
-                            {subInfo.text && (
+                            <p className="font-semibold text-neutral-900 dark:text-white text-sm leading-tight">{display.title}</p>
+                            {display.subText && (
                               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug mt-0.5 break-words">
-                                {subInfo.text}
+                                {display.subText}
                               </p>
                             )}
                           </div>
@@ -348,7 +374,7 @@ function MovementList({
                     </button>
                   );
 
-                  if (!subInfo.hasNote) {
+                  if (!display.hasTooltip) {
                     return <div key={mov.id}>{cardContent}</div>;
                   }
 
@@ -359,8 +385,8 @@ function MovementList({
                       </HoverCardTrigger>
                       <HoverCardContent side="top" className="w-64 border-none shadow-xl dark:bg-neutral-800 dark:text-white">
                         <div className="space-y-1">
-                          <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{mov.categoryName ?? t('common.uncategorized')}</h4>
-                          <p className="text-sm text-neutral-500 dark:text-neutral-400">{subInfo.fullText}</p>
+                          <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{display.tooltipTitle}</h4>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">{display.tooltipContent}</p>
                         </div>
                       </HoverCardContent>
                     </HoverCard>
