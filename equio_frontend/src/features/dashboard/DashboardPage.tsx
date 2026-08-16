@@ -7,6 +7,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Wallet, TrendingDown, TrendingUp, PieChart, Plus, AlertCircle, ChevronDown, Target, Plane, Home, Car, Landmark, Sparkles, GraduationCap, HeartPulse, Smartphone, Gift, BriefcaseBusiness, Gamepad2, Dumbbell, Baby, ShieldCheck, Shirt, Utensils, Music, Camera, BookOpen, Wrench } from 'lucide-react';
 import { NewMovementModal } from '../movements/NewMovementModal';
+import { EditMovementModal } from '../movements/EditMovementModal';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card';
@@ -188,6 +189,7 @@ export function DashboardPage() {
   const { formatTime } = useTimeFormat();
   const { t, language } = useI18n();
   const [isNewMovementOpen, setIsNewMovementOpen] = useState(false);
+  const [selectedMovement, setSelectedMovement] = useState<MovementResponse | null>(null);
   const { triggerRect, captureTrigger } = useSharedElementModal();
   const [isSavingsExpanded, setIsSavingsExpanded] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
@@ -360,8 +362,14 @@ export function DashboardPage() {
                 const display = getMovementDisplayInfo(mov, formatTime, t, language);
 
                 const cardContent = (
-                  <div
-                    className="flex items-center justify-between p-2.5 rounded-2xl border-transparent hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      captureTrigger(event);
+                      setSelectedMovement(mov);
+                    }}
+                    aria-label={t('movements.editMovement')}
+                    className="flex w-full items-center justify-between p-2.5 rounded-2xl border-transparent hover:bg-neutral-50 dark:hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-900 transition-colors cursor-pointer text-left"
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
                       <div
@@ -393,7 +401,7 @@ export function DashboardPage() {
                       {mov.type === 'INCOME' ? '+' : '-'}
                       {formatCurrency(mov.amount)}
                     </div>
-                  </div>
+                  </button>
                 );
 
                 if (!display.hasTooltip) {
@@ -402,9 +410,8 @@ export function DashboardPage() {
 
                 return (
                   <HoverCard key={mov.id}>
-                    <HoverCardTrigger className="block w-full">
-                      {cardContent}
-                    </HoverCardTrigger>
+                    <HoverCardTrigger className="block w-full" render={cardContent} />
+
                     <HoverCardContent side="top" className="w-64 border-none shadow-xl dark:bg-neutral-800 dark:text-white">
                       <div className="space-y-1">
                         <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{display.tooltipTitle}</h4>
@@ -520,6 +527,12 @@ export function DashboardPage() {
       <NewMovementModal
         isOpen={isNewMovementOpen}
         onClose={() => setIsNewMovementOpen(false)}
+        triggerRect={triggerRect}
+      />
+      <EditMovementModal
+        isOpen={selectedMovement !== null}
+        onClose={() => setSelectedMovement(null)}
+        movement={selectedMovement}
         triggerRect={triggerRect}
       />
     </div>

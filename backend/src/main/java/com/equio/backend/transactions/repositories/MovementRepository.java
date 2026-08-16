@@ -5,6 +5,7 @@ import com.equio.backend.transactions.entities.Movement;
 import com.equio.backend.transactions.entities.enums.MovementType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -16,31 +17,13 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface MovementRepository extends JpaRepository<Movement, Long> {
+public interface MovementRepository extends JpaRepository<Movement, Long>, JpaSpecificationExecutor<Movement> {
 
     Optional<Movement> findByIdAndUserId(Long id, Long userId);
 
     List<Movement> findByUserIdAndDateBetweenOrderByDateDesc(Long userId, LocalDateTime startDate, LocalDateTime endDate);
 
     long countByUserIdAndDateBetween(Long userId, LocalDateTime startDate, LocalDateTime endDate);
-
-    @Query("""
-            SELECT m FROM Movement m
-            WHERE m.user.id = :userId
-              AND (:type IS NULL OR m.type = :type)
-              AND (:categoryId IS NULL OR m.category.id = :categoryId)
-              AND (:startDate IS NULL OR m.date >= :startDate)
-              AND (:endDate IS NULL OR m.date <= :endDate)
-            ORDER BY m.date DESC, m.id DESC
-            """)
-    List<Movement> findFiltered(
-            @Param("userId") Long userId,
-            @Param("type") MovementType type,
-            @Param("categoryId") Long categoryId,
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate,
-            Pageable pageable
-    );
 
     @Query("SELECT COALESCE(SUM(m.amount), 0) FROM Movement m WHERE m.user.id = :userId AND m.type = :type")
     BigDecimal sumAmountByUserIdAndType(@Param("userId") Long userId, @Param("type") MovementType type);

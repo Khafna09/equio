@@ -16,6 +16,10 @@ import com.equio.backend.users.repositories.UserRepository;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import java.util.ArrayList;
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -126,14 +130,34 @@ public class CreateMovementServiceImpl implements CreateMovementService {
         MovementType movementType = type == null
                 ? null
                 : MovementType.valueOf(type.toUpperCase(Locale.ROOT));
-        List<Movement> movements = movementRepository.findFiltered(
-                userId,
-                movementType,
-                categoryId,
-                startDate != null ? startDate.atStartOfDay() : null,
-                endDate != null ? endDate.atTime(23, 59, 59) : null,
-                PageRequest.of(0, maxQueryResults + 1)
-        );
+        Specification<Movement> specification = (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(criteriaBuilder.equal(root.get("user").get("id"), userId));
+
+            if (movementType != null) {
+                predicates.add(criteriaBuilder.equal(root.get("type"), movementType));
+            }
+            if (categoryId != null) {
+                predicates.add(criteriaBuilder.equal(root.get("category").get("id"), categoryId));
+            }
+            if (startDate != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(
+                        root.get("date"), startDate.atStartOfDay()));
+            }
+            if (endDate != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(
+                        root.get("date"), endDate.atTime(23, 59, 59)));
+            }
+            return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
+        };
+
+        List<Movement> movements = movementRepository.findAll(
+                specification,
+                PageRequest.of(
+                        0,
+                        maxQueryResults + 1,
+                        Sort.by(Sort.Order.desc("date"), Sort.Order.desc("id")))
+        ).getContent();
         if (movements.size() > maxQueryResults) {
             throw new ResultSetTooLargeException(maxQueryResults);
         }
