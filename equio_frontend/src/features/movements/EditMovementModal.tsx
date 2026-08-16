@@ -13,6 +13,7 @@ import { DateTimePickerModal } from '../../components/ui/DateTimePickerModal';
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCurrency } from '../../hooks/useCurrency';
+import { useTimeFormat } from '../../hooks/useTimeFormat';
 import { useI18n } from '../../i18n/i18nContextValue';
 import { getApiErrorMessage } from '../../utils/apiError';
 
@@ -43,6 +44,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
   const { updateMovement, deleteMovement } = useMovements();
   const { categories, isLoading: isCategoriesLoading } = useCategories();
   const { symbol } = useCurrency();
+  const { formatTime } = useTimeFormat();
   const { t, language } = useI18n();
   const parsedInitialDate = parseMovementDate(movement);
   const initialCategory = movement?.categoryId != null
@@ -262,7 +264,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                     <Calendar className="w-4 h-4 text-neutral-400 shrink-0" />
                     <span className="truncate">
                       {format(date, 'd MMM, yyyy', { locale: language === 'en' ? enUS : es })}
-                      {!isSameMinute(date, initialDate) && ` - ${format(date, 'HH:mm')}`}
+                      {!isSameMinute(date, initialDate) && ` - ${formatTime(date)}`}
                     </span>
                   </button>
                 </div>

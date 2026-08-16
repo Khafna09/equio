@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Getter
 @Setter
@@ -36,6 +37,9 @@ public class Profile extends AuditableModel{
     @Column(name="theme", length = 20)
     private String theme = "light";
 
+    @Column(name="time_format", nullable = false, length = 2)
+    private String timeFormat = "24";
+
     public String getLanguage() {
         return language != null ? language : "es";
     }
@@ -46,6 +50,10 @@ public class Profile extends AuditableModel{
 
     public String getTheme() {
         return theme != null ? theme : "light";
+    }
+
+    public String getTimeFormat() {
+        return timeFormat != null ? timeFormat : "24";
     }
 
     @OneToOne(fetch = FetchType.LAZY)

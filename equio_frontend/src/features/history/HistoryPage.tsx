@@ -16,6 +16,7 @@ import { StaggeredEntry } from '../../components/ui/StaggeredEntry';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card';
 import { useSharedElementModal } from '../../hooks/useSharedElementModal';
 import { useCurrency } from '../../hooks/useCurrency';
+import { useTimeFormat } from '../../hooks/useTimeFormat';
 import { useI18n } from '../../i18n/i18nContextValue';
 import type { MovementResponse } from '../../types/movement.types';
 
@@ -200,7 +201,7 @@ function DraggableFilter({
   );
 }
 
-function formatMovementSubtitle(mov: MovementResponse) {
+function formatMovementSubtitle(mov: MovementResponse, formatTime: (date: Date) => string) {
   const note = mov.description?.trim() ?? '';
   const hasNote = note.length > 0;
 
@@ -210,7 +211,7 @@ function formatMovementSubtitle(mov: MovementResponse) {
     try {
       const d = parseISO(dateStr);
       if (isValid(d)) {
-        timeStr = format(d, 'HH:mm');
+        timeStr = formatTime(d);
       }
     } catch {
       timeStr = '';
@@ -255,6 +256,7 @@ function MovementList({
   onMovementClick: (movement: MovementResponse, e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const { formatCurrency } = useCurrency();
+  const { formatTime } = useTimeFormat();
   const { t, language } = useI18n();
 
   const groupedMovements = useMemo(() => {
@@ -314,7 +316,7 @@ function MovementList({
               </h4>
               <StaggeredEntry className="space-y-2">
                 {movs.map((mov) => {
-                  const subInfo = formatMovementSubtitle(mov);
+                  const subInfo = formatMovementSubtitle(mov, formatTime);
 
                   const cardContent = (
                     <button

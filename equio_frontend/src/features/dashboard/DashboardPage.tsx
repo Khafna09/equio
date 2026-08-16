@@ -1,4 +1,4 @@
-﻿import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboard } from '../../hooks/useDashboard';
 import { useMovements } from '../../hooks/useMovements';
 import { useSavings } from '../../hooks/useSavings';
 import { BalanceCard } from './BalanceCard';
@@ -11,18 +11,19 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card';
 import { ShinyButton } from '../../components/ui/shiny-button';
-import { parseISO, isValid, format } from 'date-fns';
+import { parseISO, isValid } from 'date-fns';
 import { SplitText } from '../../components/reactbits/split-text';
 import { useAuth } from '../../contexts/authContextValue';
 import { cn } from '../../utils/classNames';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useCurrency } from '../../hooks/useCurrency';
+import { useTimeFormat } from '../../hooks/useTimeFormat';
 import { useI18n } from '../../i18n/i18nContextValue';
 import type { MovementResponse } from '../../types/movement.types';
 
 
-function formatMovementSubtitle(mov: MovementResponse) {
+function formatMovementSubtitle(mov: MovementResponse, formatTime: (date: Date) => string) {
   const note = mov.description?.trim() ?? '';
   const hasNote = note.length > 0;
 
@@ -32,7 +33,7 @@ function formatMovementSubtitle(mov: MovementResponse) {
     try {
       const d = parseISO(dateStr);
       if (isValid(d)) {
-        timeStr = format(d, 'HH:mm');
+        timeStr = formatTime(d);
       }
     } catch {
       timeStr = '';
@@ -134,6 +135,7 @@ import { useSharedElementModal } from '../../hooks/useSharedElementModal';
 export function DashboardPage() {
   const { user } = useAuth();
   const { formatCurrency } = useCurrency();
+  const { formatTime } = useTimeFormat();
   const { t } = useI18n();
   const [isNewMovementOpen, setIsNewMovementOpen] = useState(false);
   const { triggerRect, captureTrigger } = useSharedElementModal();
@@ -305,7 +307,7 @@ export function DashboardPage() {
           ) : recentMovements && recentMovements.length > 0 ?(
             <div className="space-y-1.5">
               {recentMovements.map((mov) => {
-                const subInfo = formatMovementSubtitle(mov);
+                const subInfo = formatMovementSubtitle(mov, formatTime);
 
                 const cardContent = (
                   <div

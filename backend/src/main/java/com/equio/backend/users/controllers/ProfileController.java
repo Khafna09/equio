@@ -38,7 +38,8 @@ public class ProfileController {
                 profile.getLastName(),
                 profile.getLanguage(),
                 profile.getCurrency(),
-                profile.getTheme()
+                profile.getTheme(),
+                profile.getTimeFormat()
         ));
     }
 
@@ -55,7 +56,8 @@ public class ProfileController {
                 profile.getLastName(),
                 profile.getLanguage(),
                 profile.getCurrency(),
-                profile.getTheme()
+                profile.getTheme(),
+                profile.getTimeFormat()
         ));
     }
 }

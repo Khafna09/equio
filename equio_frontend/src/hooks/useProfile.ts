@@ -1,4 +1,4 @@
-﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getApiErrorMessage } from '../utils/apiError';
 import { profileApi, type ProfileRequest, type ProfileResponse } from '../api/profile.api';
 import { useAuth } from '../contexts/authContextValue';
@@ -50,17 +50,28 @@ export function useProfile() {
     mutationFn: async (data: ProfileRequest) => {
       return await profileApi.updateMyProfile(data);
     },
-    onSuccess: (updatedProfile) => {
-      queryClient.setQueryData(['profile'], updatedProfile);
-      document.documentElement.classList.toggle('dark', updatedProfile.theme === 'dark');
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey: ['profile'] });
+      queryClient.setQueryData<ProfileResponse>(['profile'], (current) =>
+        current ? { ...current, ...data } : current
+      );
+    },
+    onSuccess: (updatedProfile, data) => {
+      const current = queryClient.getQueryData<ProfileResponse>(['profile']);
+      const mergedProfile = { ...updatedProfile, ...current, ...data };
+      queryClient.setQueryData(['profile'], mergedProfile);
+      document.documentElement.classList.toggle('dark', mergedProfile.theme === 'dark');
 
-      const profileLanguage = updatedProfile.language === 'en' ? 'en' : 'es';
+      const profileLanguage = mergedProfile.language === 'en' ? 'en' : 'es';
       updateUser({
-        firstName: updatedProfile.firstName,
-        lastName: updatedProfile.lastName,
+        firstName: mergedProfile.firstName,
+        lastName: mergedProfile.lastName,
         language: profileLanguage,
       });
       setLanguage(profileLanguage);
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
     }
   });
 

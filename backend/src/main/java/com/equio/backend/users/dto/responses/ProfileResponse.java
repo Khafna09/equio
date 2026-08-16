@@ -6,6 +6,7 @@ public record ProfileResponse (
         String lastName,
         String language,
         String currency,
-        String theme
+        String theme,
+        String timeFormat
 ) {
 }

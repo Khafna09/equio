@@ -20,13 +20,13 @@ export function SettingsPage() {
   }
 
   const profile = profileState.profile;
-  const key = [profile.id, profile.firstName, profile.lastName, profile.language, profile.currency, profile.theme].join(':');
+  const key = profile.id;
   return (
     <SettingsPageContent
       key={key}
       profile={profile}
       updateProfile={profileState.updateProfile}
-      isUpdating={profileState.isUpdating}
+
     />
   );
 }
@@ -34,10 +34,10 @@ export function SettingsPage() {
 interface SettingsPageContentProps {
   profile: ProfileResponse;
   updateProfile: (data: ProfileRequest) => Promise<ProfileResponse>;
-  isUpdating: boolean;
+
 }
 
-function SettingsPageContent({ profile, updateProfile, isUpdating }: SettingsPageContentProps) {
+function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProps) {
   const { user } = useAuth();
   const { t, setLanguage: setAppLanguage } = useI18n();
   const [firstName, setFirstName] = useState(profile.firstName || '');
@@ -45,34 +45,72 @@ function SettingsPageContent({ profile, updateProfile, isUpdating }: SettingsPag
   const [language, setLanguage] = useState(profile.language || 'es');
   const [currency, setCurrency] = useState(profile.currency || 'PEN');
   const [theme, setTheme] = useState(profile.theme || 'light');
+  const [timeFormat, setTimeFormat] = useState<'12' | '24'>(profile.timeFormat || '24');
+  const [isSavingPersonal, setIsSavingPersonal] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingPersonal(true);
     try {
-      await updateProfile({ firstName, lastName, language, currency, theme });
+      await updateProfile({ firstName, lastName });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch {
       alert(t('settings.saveError'));
+    } finally {
+      setIsSavingPersonal(false);
     }
   };
 
-  const handleThemeChange = async (newTheme: string) => {
-    setTheme(newTheme);
-    document.documentElement.classList.toggle('dark', newTheme === 'dark');
+  const persistPreference = async (data: ProfileRequest) => {
     try {
-      await updateProfile({ firstName, lastName, language, currency, theme: newTheme });
+      await updateProfile(data);
+      return true;
     } catch {
       alert(t('settings.saveError'));
+      return false;
     }
+  };
+
+  const handleThemeChange = (newTheme: 'light' | 'dark') => {
+    const previousTheme = theme;
+    setTheme(newTheme);
+    document.documentElement.classList.toggle('dark', newTheme === 'dark');
+    void persistPreference({ theme: newTheme }).then((saved) => {
+      if (saved) return;
+      setTheme(previousTheme);
+      document.documentElement.classList.toggle('dark', previousTheme === 'dark');
+    });
   };
 
   const handleLanguageChange = (value: string) => {
+    if (value !== 'es' && value !== 'en') return;
+    const previousLanguage = language === 'en' ? 'en' : 'es';
     setLanguage(value);
-    if (value === 'es' || value === 'en') {
-      setAppLanguage(value);
-    }
+    setAppLanguage(value);
+    void persistPreference({ language: value }).then((saved) => {
+      if (saved) return;
+      setLanguage(previousLanguage);
+      setAppLanguage(previousLanguage);
+    });
+  };
+
+  const handleCurrencyChange = (value: string) => {
+    const previousCurrency = currency;
+    setCurrency(value);
+    void persistPreference({ currency: value }).then((saved) => {
+      if (!saved) setCurrency(previousCurrency);
+    });
+  };
+
+  const handleTimeFormatChange = (value: string) => {
+    if (value !== '12' && value !== '24') return;
+    const previousTimeFormat = timeFormat;
+    setTimeFormat(value);
+    void persistPreference({ timeFormat: value }).then((saved) => {
+      if (!saved) setTimeFormat(previousTimeFormat);
+    });
   };
 
   return (
@@ -108,7 +146,19 @@ function SettingsPageContent({ profile, updateProfile, isUpdating }: SettingsPag
                 </div>
               </div>
 
-              <div>
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+                {savedSuccess && (
+                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                    {t('settings.changesSaved')}
+                  </span>
+                )}
+                <Button type="submit" variant="primary" disabled={isSavingPersonal} className="flex items-center gap-2">
+                  <Save className="w-4 h-4" />
+                  {isSavingPersonal ? t('settings.saving') : t('settings.savePersonalDetails')}
+                </Button>
+              </div>
+            </form>
+              <div className="pt-8 mt-8 border-t border-neutral-100 dark:border-neutral-800">
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">{t('settings.preferences')}</h3>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl gap-4">
@@ -119,7 +169,7 @@ function SettingsPageContent({ profile, updateProfile, isUpdating }: SettingsPag
                     <div className="w-44">
                       <Select
                         value={currency}
-                        onChange={(val) => setCurrency(val)}
+                        onChange={handleCurrencyChange}
                         options={[
                           { value: 'PEN', label: 'Soles (S/.)' },
                           { value: 'USD', label: 'US Dollars ($)' },
@@ -149,6 +199,23 @@ function SettingsPageContent({ profile, updateProfile, isUpdating }: SettingsPag
                     </div>
                   </div>
 
+                  <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl gap-4">
+                    <div>
+                      <p className="font-medium text-neutral-900 dark:text-white">{t('settings.timeFormat')}</p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('settings.timeFormatHint')}</p>
+                    </div>
+                    <div className="w-44">
+                      <Select
+                        value={timeFormat}
+                        onChange={handleTimeFormatChange}
+                        options={[
+                          { value: '24', label: t('settings.timeFormat24') },
+                          { value: '12', label: t('settings.timeFormat12') },
+                        ]}
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl">
                     <div>
                       <p className="font-medium text-neutral-900 dark:text-white">{t('settings.appearance')}</p>
@@ -158,19 +225,6 @@ function SettingsPageContent({ profile, updateProfile, isUpdating }: SettingsPag
                   </div>
                 </div>
               </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-100 dark:border-neutral-800">
-                {savedSuccess && (
-                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
-                    {t('settings.changesSaved')}
-                  </span>
-                )}
-                <Button type="submit" variant="primary" disabled={isUpdating} className="flex items-center gap-2">
-                  <Save className="w-4 h-4" />
-                  {isUpdating ? t('settings.saving') : t('settings.saveChanges')}
-                </Button>
-              </div>
-            </form>
           </Card>
         </TabsContent>
 
