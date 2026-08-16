@@ -599,17 +599,7 @@ export function BudgetsPage() {
           )}
         </TabsContent>
         <TabsContent value="history" className="mt-0">
-          <BudgetHistoryList 
-            onReuse={(budget) => {
-              setBudgetToEdit({
-                ...budget,
-                startDate: '',
-                endDate: '',
-                id: undefined,
-              });
-              setIsDrawerOpen(true);
-            }} 
-          />
+          <BudgetHistoryList />
         </TabsContent>
       </Tabs>
       <BudgetDrawer 

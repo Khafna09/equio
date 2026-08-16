@@ -2,7 +2,10 @@ package com.equio.backend.budgets.controllers;
 
 import com.equio.backend.budgets.dto.requests.BudgetRequest;
 import com.equio.backend.budgets.dto.responses.BudgetResponse;
+import com.equio.backend.budgets.dto.responses.BudgetHistoryReportResponse;
 import com.equio.backend.budgets.services.BudgetService;
+import com.equio.backend.budgets.services.BudgetHistoryReportService;
+import com.equio.backend.budgets.services.BudgetHistoryPdfService;
 import com.equio.backend.users.services.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -12,7 +15,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -29,10 +35,17 @@ public class BudgetController {
 
     private final BudgetService budgetService;
     private final UserService userService;
+    private final BudgetHistoryReportService budgetHistoryReportService;
+    private final BudgetHistoryPdfService budgetHistoryPdfService;
 
-    public BudgetController(BudgetService budgetService, UserService userService) {
+    public BudgetController(BudgetService budgetService,
+                            UserService userService,
+                            BudgetHistoryReportService budgetHistoryReportService,
+                            BudgetHistoryPdfService budgetHistoryPdfService) {
         this.budgetService = budgetService;
         this.userService = userService;
+        this.budgetHistoryReportService = budgetHistoryReportService;
+        this.budgetHistoryPdfService = budgetHistoryPdfService;
     }
 
     @Operation(
@@ -104,6 +117,39 @@ public class BudgetController {
     }
 
     @Operation(
+            summary = "Obtener reporte de un presupuesto cerrado",
+            description = "Devuelve metricas consolidadas del ciclo y comparacion con el periodo anterior."
+    )
+    @GetMapping("/history/{id}/report")
+    public ResponseEntity<BudgetHistoryReportResponse> getHistoryReport(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable @Positive Long id) {
+        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        return ResponseEntity.ok(budgetHistoryReportService.getReport(user.getId(), id));
+    }
+
+    @Operation(
+            summary = "Descargar reporte historico en PDF",
+            description = "Genera un PDF con el resumen y los indicadores del presupuesto cerrado."
+    )
+    @GetMapping(value = "/history/{id}/report.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadHistoryReport(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable @Positive Long id) {
+        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        BudgetHistoryReportResponse report = budgetHistoryReportService.getReport(user.getId(), id);
+        byte[] pdf = budgetHistoryPdfService.generate(user.getId(), report);
+        String disposition = ContentDisposition.attachment()
+                .filename("budget-report-" + id + ".pdf")
+                .build()
+                .toString();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
+                .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(pdf.length)
+                .body(pdf);
+    }
+    @Operation(
             summary = "Obtener presupuesto por ID",
             description = "Devuelve el detalle de un presupuesto específico del usuario."
     )
@@ -156,7 +202,7 @@ public class BudgetController {
 
     @Operation(
             summary = "Eliminar presupuesto",
-            description = "Elimina un presupuesto. Si tiene una meta de ahorro asociada, también se eliminará."
+            description = "Elimina un presupuesto. En presupuestos cerrados conserva las metas y elimina solo su vinculacion historica."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "Presupuesto eliminado"),

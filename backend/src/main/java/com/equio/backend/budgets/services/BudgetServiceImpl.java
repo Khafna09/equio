@@ -340,7 +340,7 @@ public class BudgetServiceImpl implements BudgetService {
             if (!children.isEmpty()) {
                 if (cascade) {
                     for (Budget child : children) {
-                        savingGoalRepository.deleteAll(savingGoalRepository.findByBudgetId(child.getId()));
+                        removeBudgetLinkFromGoalsOrDelete(child);
                         budgetRepository.delete(child);
                     }
                 } else {
@@ -355,7 +355,7 @@ public class BudgetServiceImpl implements BudgetService {
             }
         }
 
-        savingGoalRepository.deleteAll(savingGoalRepository.findByBudgetId(budgetId));
+        removeBudgetLinkFromGoalsOrDelete(budget);
         budgetRepository.delete(budget);
     }
     
@@ -416,6 +416,15 @@ public class BudgetServiceImpl implements BudgetService {
     }
 
 
+    private void removeBudgetLinkFromGoalsOrDelete(Budget budget) {
+        var goals = savingGoalRepository.findByBudgetId(budget.getId());
+        if (budget.getStatus() == BudgetStatus.CLOSED) {
+            goals.forEach(goal -> goal.setBudget(null));
+            savingGoalRepository.saveAll(goals);
+        } else {
+            savingGoalRepository.deleteAll(goals);
+        }
+    }
     private Budget findBudgetAndValidateOwner(Long userId, Long budgetId) {
         return budgetRepository.findByIdAndUserId(budgetId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Budget"));

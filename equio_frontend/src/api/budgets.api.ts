@@ -1,5 +1,5 @@
 import apiClient from './apiClient';
-import type { BudgetRequest, BudgetResponse } from '../types/budget.types';
+import type { BudgetHistoryReport, BudgetRequest, BudgetResponse } from '../types/budget.types';
 
 export const budgetsApi = {
   getAll: async () => {
@@ -12,6 +12,17 @@ export const budgetsApi = {
     return response.data;
   },
 
+  getHistoryReport: async (id: number) => {
+    const response = await apiClient.get<BudgetHistoryReport>(`/budgets/history/${id}/report`);
+    return response.data;
+  },
+
+  downloadHistoryReport: async (id: number) => {
+    const response = await apiClient.get<Blob>(`/budgets/history/${id}/report.pdf`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
   getById: async (id: number) => {
     const response = await apiClient.get<BudgetResponse>(`/budgets/${id}`);
     return response.data;

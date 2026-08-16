@@ -140,7 +140,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
 
               <div className="flex flex-col items-center justify-center my-2">
                 <span className="text-xs font-bold text-neutral-400 dark:text-neutral-400 uppercase tracking-wider mb-2">
-                  {type === 'EXPENSE' ?'¿CUÁNTO HAS GASTADO?' : '¿CUÁNTO HAS INGRESADO?'}
+                  {type === 'EXPENSE' ? t('movements.expenseQuestion') : t('movements.incomeQuestion')}
                 </span>
                 <div className="flex items-center justify-center gap-1">
                   <span className={`text-3xl font-bold transition-colors ${type === 'EXPENSE' ?'text-red-400' : 'text-emerald-400'}`}>{symbol}</span>
