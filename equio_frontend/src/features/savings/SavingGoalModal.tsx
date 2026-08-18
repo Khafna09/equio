@@ -101,6 +101,7 @@ export function SavingGoalModal({ isOpen, onClose, triggerRect }: SavingGoalModa
             value={deadline}
             onChange={setDeadline}
             minDate={new Date()}
+
           />
 
         {submitError ? (

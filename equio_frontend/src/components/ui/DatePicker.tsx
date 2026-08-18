@@ -58,7 +58,7 @@ export function DatePicker({
               align="start"
               sideOffset={8}
               collisionPadding={16}
-              className="z-[70] rounded-xl border border-border bg-card p-0 shadow-xl outline-none"
+              className="z-[70] rounded-2xl border-none bg-transparent p-0 shadow-2xl outline-none"
             >
               <Calendar
                 compact

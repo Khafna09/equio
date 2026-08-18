@@ -133,6 +133,7 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
             value={deadline}
             onChange={setDeadline}
             minDate={new Date()}
+
           />
 
         {submitError ? (

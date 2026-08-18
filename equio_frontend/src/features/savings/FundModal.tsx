@@ -11,6 +11,12 @@ import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
 import { useI18n } from '../../i18n/i18nContextValue';
 
+// The production CSP intentionally blocks blob workers, so this short effect renders locally.
+const fireContributionConfetti = confetti.create(undefined, {
+  resize: true,
+  useWorker: false,
+});
+
 interface FundModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -47,16 +53,31 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
         operation
       });
 
-      if (isAdd) {
-        confetti({
-          particleCount: 80,
-          spread: 60,
-          origin: { y: 0.7 }
-        });
-      }
-
       onClose();
       setAmount('');
+
+      if (isAdd) {
+        window.setTimeout(() => {
+          const contributionButton = document.querySelector<HTMLElement>(
+            `[data-contribution-goal-id="${currentGoal.id}"]`,
+          );
+          const rect = contributionButton?.getBoundingClientRect() ?? triggerRect;
+          const origin = rect
+            ? {
+                x: Math.min(1, Math.max(0, (rect.left + rect.width / 2) / window.innerWidth)),
+                y: Math.min(1, Math.max(0, (rect.top + rect.height / 2) / window.innerHeight)),
+              }
+            : { x: 0.5, y: 0.72 };
+
+          void fireContributionConfetti({
+            particleCount: 90,
+            spread: 70,
+            startVelocity: 35,
+            origin,
+            zIndex: 99999,
+          });
+        }, 180);
+      }
     } catch (error: unknown) {
       setSubmitError(getApiErrorMessage(error, t('savings.updateError')));
     } finally {

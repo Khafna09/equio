@@ -158,6 +158,7 @@ export function SavingsPage() {
                       <div className="flex items-center gap-2">
                         <Button
                           variant="primary"
+                          data-contribution-goal-id={goal.id}
                           className="flex-1 rounded-2xl py-2.5 bg-primary-600 hover:bg-primary-700 font-semibold text-xs"
                           onClick={(e) => {
                             captureTrigger(e);
