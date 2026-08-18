@@ -11,14 +11,15 @@ spring:
     password: ${DB_APP_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
-      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:0}
       connection-timeout: 10000
       validation-timeout: 3000
+      idle-timeout: 60000
       max-lifetime: 1800000
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
-    url: ${DB_URL}
+    url: ${DB_MIGRATION_URL:${DB_URL}}
     user: ${DB_MIGRATION_USERNAME}
     password: ${DB_MIGRATION_PASSWORD}
     baseline-on-migrate: true
@@ -47,7 +48,7 @@ spring:
     timeout-per-shutdown-phase: 20s
 
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${PORT:${SERVER_PORT:8081}}
   shutdown: graceful
   max-http-request-header-size: 16KB
   error:
@@ -58,6 +59,15 @@ server:
   tomcat:
     max-http-form-post-size: 1MB
     max-swallow-size: 1MB
+    threads:
+      max: ${HTTP_MAX_THREADS:50}
+      min-spare: ${HTTP_MIN_SPARE_THREADS:4}
+    max-connections: ${HTTP_MAX_CONNECTIONS:200}
+    accept-count: ${HTTP_ACCEPT_COUNT:50}
+  compression:
+    enabled: true
+    min-response-size: 1024
+    mime-types: application/json,application/problem+json,text/plain,text/css,application/javascript,image/svg+xml
 
 app:
   cors:
@@ -100,6 +110,18 @@ springdoc:
   swagger-ui:
     enabled: ${SWAGGER_PUBLIC:true}
     path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+      probes:
+        enabled: true
 
 logging:
   level:

@@ -1,4 +1,4 @@
-package com.equio.backend.images;
+package com.equio.backend.images.services;
 
 import com.equio.backend.shared.exceptions.ExternalServiceException;
 import org.junit.jupiter.api.Test;

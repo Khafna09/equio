@@ -5,22 +5,23 @@ import { Button } from '../../components/ui/Button';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { BudgetDrawer } from './BudgetDrawer';
 import { BudgetCard } from './BudgetCard';
-import { Modal } from '../../components/ui/Modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
-import { PiggyBank, MoreVertical, Calendar, Pencil, Trash2, AlertTriangle, Wallet, XOctagon, Plus, Construction } from 'lucide-react';
+import { PiggyBank, MoreVertical, Calendar, Pencil, AlertTriangle, Wallet, XOctagon, Plus, Construction } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { EmptyBudgetState } from './EmptyBudgetState';
 import { InlineBudgetForm } from './InlineBudgetForm';
 import { BudgetHistoryList } from './BudgetHistoryList';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
 import { getLocalStorageItem, setLocalStorageItem } from '../../utils/browserStorage';
-import { getApiErrorMessage } from '../../utils/apiError';
-import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
-import type { BudgetRequest, BudgetResponse } from '../../types/budget.types';
+import type { BudgetResponse } from '../../types/budget.types';
+import { SavingsCard } from './SavingsCard';
+import { useBudgetOrder } from './useBudgetOrder';
+import { calculateBudgetMetrics } from './budgetMetrics';
+import { BudgetActionModals } from './BudgetActionModals';
 interface SortableBudgetCardProps {
   budget: BudgetResponse;
   openMenuId: number | null;
@@ -72,188 +73,6 @@ function SortableBudgetCard({
     </div>
   );
 }
-function SavingsCard({ globalBudget, onUpdateBudget }: {
-  globalBudget?: BudgetResponse;
-  onUpdateBudget: (input: { id: number; data: BudgetRequest }) => Promise<unknown>;
-}) {
-  const { currency, formatCurrency } = useCurrency();
-  const { t } = useI18n();
-  const [savingsType, setSavingsType] = useState<'PERCENTAGE' | 'FIXED'>(globalBudget?.savingsType || 'PERCENTAGE');
-  const [savingsValue, setSavingsValue] = useState<string>(globalBudget?.savingsValue ? String(globalBudget.savingsValue) : '');
-  const [enabled, setEnabled] = useState<boolean>(globalBudget?.savingsValue != null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const handleToggle = async () => {
-    if (!globalBudget) return;
-    const nextEnabled = !enabled;
-    setEnabled(nextEnabled);
-    if (!nextEnabled) {
-      setSaveError(null);
-      setIsSaving(true);
-      try {
-        await onUpdateBudget({
-          id: globalBudget.id,
-          data: {
-            name: globalBudget.name,
-            totalAmount: globalBudget.totalAmount,
-            isFixed: globalBudget.isFixed,
-            startDate: globalBudget.startDate,
-            endDate: globalBudget.endDate,
-            categoryId: globalBudget.categoryId ?? undefined,
-            savingsType: undefined,
-            savingsValue: undefined,
-          }
-        });
-      } catch (error: unknown) {
-        setEnabled(true);
-        setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
-      } finally {
-        setIsSaving(false);
-      }
-    }
-  };
-  const handleSave = async () => {
-    if (!globalBudget || !savingsValue) return;
-    const parsedValue = parsePositiveMoney(savingsValue);
-    const isInvalid = parsedValue === null
-      || (savingsType === 'PERCENTAGE' && parsedValue > 100)
-      || (savingsType === 'FIXED' && parsedValue > globalBudget.totalAmount);
-    if (isInvalid) {
-      setSaveError(t('common.invalidAmount'));
-      return;
-    }
-
-    setSaveError(null);
-    setIsSaving(true);
-    try {
-      await onUpdateBudget({
-        id: globalBudget.id,
-        data: {
-          name: globalBudget.name,
-          totalAmount: globalBudget.totalAmount,
-          isFixed: globalBudget.isFixed,
-          startDate: globalBudget.startDate,
-          endDate: globalBudget.endDate,
-          categoryId: globalBudget.categoryId ?? undefined,
-          savingsType,
-          savingsValue: parsedValue,
-        }
-      });
-    } catch (error: unknown) {
-      setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-  if (!globalBudget) {
-    return null;
-  }
-  return (
-    <Card className="p-5 md:p-6 flex flex-col justify-between h-full relative overflow-hidden bg-gradient-to-br from-white to-primary-50/20 dark:from-neutral-800 dark:to-primary-950/20 border-primary-100/50 dark:border-neutral-700">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-primary-100/30 dark:bg-primary-900/20 rounded-bl-full -mr-10 -mt-10 pointer-events-none" />
-      <div className="flex justify-between items-center mb-4 relative z-10">
-        <div className="flex items-center gap-2">
-          <PiggyBank className="w-5 h-5 text-primary-500 dark:text-primary-400" />
-          <h3 className="text-xl font-semibold text-neutral-900 dark:text-white">{t('budgets.savingsCardTitle')}</h3>
-        </div>
-        
-        <button
-          type="button"
-          onClick={handleToggle}
-          disabled={isSaving}
-          className={`w-11 h-6 rounded-full transition-colors relative focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 shadow-inner ${enabled ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'}`}
-        >
-          <div className={`absolute top-1 left-1 bg-white dark:bg-neutral-800 w-4 h-4 rounded-full shadow-sm transition-transform ${enabled ? 'translate-x-5' : ''}`} />
-        </button>
-      </div>
-      <AnimatePresence mode="wait">
-        {!enabled ? (
-          <motion.div 
-            key="disabled"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="py-6 text-center text-neutral-500 dark:text-neutral-400 text-sm relative z-10"
-          >
-            {t('budgets.savingsDisabled')}
-          </motion.div>
-        ) : (
-          <motion.div 
-            key="enabled"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-4 relative z-10"
-          >
-            <div className="flex items-center gap-2 p-1 bg-neutral-100 dark:bg-neutral-900 rounded-xl">
-              <button
-                type="button"
-                className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs transition-colors shadow-sm ${savingsType === 'PERCENTAGE' ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'}`}
-                onClick={() => setSavingsType('PERCENTAGE')}
-              >
-                {t('budgets.percentage')}
-              </button>
-              <button
-                type="button"
-                className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs transition-colors shadow-sm ${savingsType === 'FIXED' ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'}`}
-                onClick={() => setSavingsType('FIXED')}
-              >
-                {t('budgets.fixedAmount')}
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="number"
-                  step={savingsType === 'PERCENTAGE' ? '1' : '0.01'}
-                  min="0.01"
-                  max={savingsType === 'PERCENTAGE' ? 100 : Math.min(MAX_MONEY_AMOUNT, globalBudget.totalAmount)}
-                  placeholder={savingsType === 'PERCENTAGE' ? 'Ej: 20' : 'Ej: 1000'}
-                  value={savingsValue}
-                  onChange={(e) => setSavingsValue(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-sm font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:border-primary-500 shadow-sm"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-neutral-400 dark:text-neutral-500">
-                  {savingsType === 'PERCENTAGE' ? '%' : currency}
-                </span>
-              </div>
-              <Button
-                variant="primary"
-                className="px-3 py-1.5 text-xs shadow-sm"
-                onClick={handleSave}
-                isLoading={isSaving}
-                disabled={!savingsValue}
-              >
-                {t('budgets.apply')}
-              </Button>
-            </div>
-            {saveError ? <p className="text-xs text-rose-600 dark:text-rose-400">{saveError}</p> : null}
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400 bg-white/50 dark:bg-neutral-900/60 p-2 rounded-lg border border-neutral-100 dark:border-neutral-700">
-              {savingsType === 'PERCENTAGE' && parsePositiveMoney(savingsValue) !== null
-                ? t('budgets.autoReserve', {
-                    amount: formatCurrency(globalBudget.totalAmount * ((parsePositiveMoney(savingsValue) ?? 0) / 100)),
-                  })
-                : t('budgets.protectedAmount')}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </Card>
-  );
-}
-function loadCategoryBudgetOrder(): number[] {
-  try {
-    const stored = getLocalStorageItem('equio_category_budgets_order');
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    if (!Array.isArray(parsed) || !parsed.every((id) => Number.isSafeInteger(id) && id > 0)) {
-      return [];
-    }
-    return [...new Set(parsed as number[])].slice(0, 200);
-  } catch {
-    return [];
-  }
-}
 export function BudgetsPage() {
   const { budgets, isLoading, deleteBudget, closeBudget, updateBudget, createBudget } = useBudgets();
   const { formatCurrency: formatCurrencyHook } = useCurrency();
@@ -288,47 +107,18 @@ export function BudgetsPage() {
     () => activeBudgets.filter(b => b.categoryId),
     [activeBudgets]
   );
-  const [categoryBudgetOrder, setCategoryBudgetOrder] = useState<number[]>(loadCategoryBudgetOrder);
-  const orderedCategoryBudgets = useMemo(() => {
-    const byId = new Map(categoryBudgets.map((budget) => [budget.id, budget]));
-    const ordered: BudgetResponse[] = [];
-    for (const id of categoryBudgetOrder) {
-      const budget = byId.get(id);
-      if (budget) {
-        ordered.push(budget);
-        byId.delete(id);
-      }
-    }
-    byId.forEach((budget) => ordered.push(budget));
-    return ordered;
-  }, [categoryBudgetOrder, categoryBudgets]);
-  const saveCategoryBudgetOrder = (newOrder: BudgetResponse[]) => {
-    const orderIds = newOrder.map((budget) => budget.id);
-    setCategoryBudgetOrder(orderIds);
-    setLocalStorageItem('equio_category_budgets_order', JSON.stringify(orderIds));
-  };
+  const { orderedBudgets: orderedCategoryBudgets, reorder } = useBudgetOrder(categoryBudgets);
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
-    const oldIndex = orderedCategoryBudgets.findIndex((budget) => budget.id === active.id);
-    const newIndex = orderedCategoryBudgets.findIndex((budget) => budget.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    saveCategoryBudgetOrder(arrayMove(orderedCategoryBudgets, oldIndex, newIndex));
+    reorder(Number(active.id), Number(over.id));
   };
-  const savingsDeduction = (!globalBudget || globalBudget.savingsValue == null) ? 0 : 
-    (globalBudget.savingsType === 'PERCENTAGE' 
-      ? globalBudget.totalAmount * (globalBudget.savingsValue / 100) 
-      : globalBudget.savingsValue);
-  
-  const effectiveGlobalLimit = globalBudget ? Math.max(0, globalBudget.totalAmount - savingsDeduction) : 0;
-  
-  const globalRemainingAmount = globalBudget ? Math.max(0, effectiveGlobalLimit - globalBudget.spentAmount) : 0;
-  // La capacidad asignable descuenta el ahorro y las asignaciones existentes.
-  const totalSubBudgetsAmount = categoryBudgets.reduce((acc, b) => acc + b.totalAmount, 0);
-  const assignableSubBudgetsCapacity = Math.max(0, effectiveGlobalLimit - totalSubBudgetsAmount);
-  
-  const globalProgress = (globalBudget && effectiveGlobalLimit > 0) 
-    ? Math.min(100, Number(((globalBudget.spentAmount / effectiveGlobalLimit) * 100).toFixed(2))) 
-    : 0;
+  const {
+    savingsDeduction,
+    effectiveGlobalLimit,
+    globalRemainingAmount,
+    assignableSubBudgetsCapacity,
+    globalProgress,
+  } = calculateBudgetMetrics(globalBudget, categoryBudgets);
   const handleUpdateAmount = async (budget: BudgetResponse, newAmount: number) => {
     await updateBudget({
       id: budget.id,
@@ -626,146 +416,22 @@ export function BudgetsPage() {
         isAdvancedMode={isAdvancedMode}
         independentBudgets={categoryBudgets.filter(b => !b.parentBudgetId)}
       />
-      <Modal 
-        isOpen={isCloseModalOpen} 
-        onClose={() => !isProcessing && setIsCloseModalOpen(false)} 
-        title={t('budgets.closePeriodNow')}
-      >
-        <div className="mt-4">
-          <div className="flex items-start gap-4 p-4 bg-orange-50 dark:bg-orange-950/30 text-orange-900 dark:text-orange-100 border border-orange-200 dark:border-orange-900/60 rounded-xl mb-6">
-            <AlertTriangle className="w-6 h-6 shrink-0 mt-0.5 text-orange-600" />
-            <div className="text-sm">
-              <p className="font-semibold mb-1 text-base">
-                {t('budgets.closeQuestion')}
-              </p>
-              <p className="text-orange-800 dark:text-orange-200 opacity-90">
-                {t('budgets.closeDescription')}
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button
-              variant="secondary"
-              disabled={isProcessing}
-              onClick={() => setIsCloseModalOpen(false)}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              className="bg-orange-500 hover:bg-orange-600 focus:ring-orange-500 border-none shadow-sm shadow-orange-500/20"
-              isLoading={isProcessing}
-              onClick={handleCloseBudget}
-            >
-              {t('budgets.closeBudget')}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-      <Modal 
-        isOpen={isDeleteModalOpen} 
-        onClose={() => !isProcessing && setIsDeleteModalOpen(false)} 
-        title={t('budgets.deletePermanently')}
-      >
-        <div className="mt-4">
-          <div className="flex items-start gap-4 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl mb-6">
-            <Trash2 className="w-6 h-6 shrink-0 mt-0.5 text-red-600" />
-            <div className="text-sm text-red-900 dark:text-red-100 dark:text-red-100 w-full">
-              <p className="font-semibold mb-3 text-base">
-                {t('budgets.deleteWarning')}
-              </p>
-              
-              {!isAdvancedMode ? (
-                <div className="mt-4">
-                  <p className="mb-2 opacity-90">{t('budgets.deleteGlobalCascade')}</p>
-                </div>
-              ) : (
-                <div className="space-y-3 mt-4 w-full">
-                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${deleteCascade ? 'bg-white dark:bg-red-950/40 border-red-300 dark:border-red-700 shadow-sm' : 'border-transparent hover:bg-red-100/50 dark:hover:bg-red-950/40'}`}>
-                    <input 
-                      type="radio" 
-                      name="cascade" 
-                      className="mt-1 accent-red-600 w-4 h-4"
-                      checked={deleteCascade}
-                      onChange={() => setDeleteCascade(true)}
-                    />
-                    <div>
-                      <div className="font-medium">{t('budgets.deleteAll')}</div>
-                      <div className="text-xs opacity-80">{t('budgets.deleteAllHint')}</div>
-                    </div>
-                  </label>
-                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${!deleteCascade ? 'bg-white dark:bg-red-950/40 border-red-300 dark:border-red-700 shadow-sm' : 'border-transparent hover:bg-red-100/50 dark:hover:bg-red-950/40'}`}>
-                    <input 
-                      type="radio" 
-                      name="cascade" 
-                      className="mt-1 accent-red-600 w-4 h-4"
-                      checked={!deleteCascade}
-                      onChange={() => setDeleteCascade(false)}
-                    />
-                    <div>
-                      <div className="font-medium">{t('budgets.deleteOnlyTotal')}</div>
-                      <div className="text-xs opacity-80">{t('budgets.deleteOnlyTotalHint')}</div>
-                    </div>
-                  </label>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-neutral-100 dark:border-neutral-700">
-            <Button
-              variant="secondary"
-              disabled={isProcessing}
-              onClick={() => setIsDeleteModalOpen(false)}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-500 border-none shadow-sm shadow-red-500/20"
-              isLoading={isProcessing}
-              onClick={handleDeleteBudget}
-            >
-              {t('common.delete')}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-      <Modal 
-        isOpen={isSubBudgetDeleteModalOpen} 
-        onClose={() => !isProcessing && setIsSubBudgetDeleteModalOpen(false)} 
-        title={t('budgets.deleteSubButton')}
-      >
-        <div className="mt-4">
-          <div className="flex items-start gap-4 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl mb-6">
-            <Trash2 className="w-6 h-6 shrink-0 mt-0.5 text-red-600" />
-            <div className="text-sm text-red-900 dark:text-red-100">
-              <p className="font-semibold mb-1 text-base">
-                ¿{t('common.delete')} el sub-presupuesto de "{budgetActionTarget?.categoryName || budgetActionTarget?.name}"?
-              </p>
-              <p className="text-red-700 dark:text-red-300 text-xs leading-relaxed mt-2">
-                Se eliminará el límite configurado de <b>{budgetActionTarget ? formatCurrency(budgetActionTarget.totalAmount) : '$0'}</b>. Este cupo se liberará y volverá a estar disponible en tu {t('budgets.globalBudget')}. Tus movimientos de gastos pasados no se borrarán.
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-neutral-100 dark:border-neutral-700">
-            <Button
-              variant="secondary"
-              disabled={isProcessing}
-              onClick={() => setIsSubBudgetDeleteModalOpen(false)}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-500 border-none shadow-sm shadow-red-600/20"
-              isLoading={isProcessing}
-              onClick={handleDeleteSubBudget}
-            >
-              {t('budgets.deleteSubButton')}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <BudgetActionModals
+        closeOpen={isCloseModalOpen}
+        deleteOpen={isDeleteModalOpen}
+        deleteSubBudgetOpen={isSubBudgetDeleteModalOpen}
+        isAdvancedMode={isAdvancedMode}
+        isProcessing={isProcessing}
+        deleteCascade={deleteCascade}
+        target={budgetActionTarget}
+        onCloseClose={() => setIsCloseModalOpen(false)}
+        onDeleteClose={() => setIsDeleteModalOpen(false)}
+        onDeleteSubBudgetClose={() => setIsSubBudgetDeleteModalOpen(false)}
+        onDeleteCascadeChange={setDeleteCascade}
+        onConfirmClose={handleCloseBudget}
+        onConfirmDelete={handleDeleteBudget}
+        onConfirmDeleteSubBudget={handleDeleteSubBudget}
+      />
     </div>
   );
 }

@@ -3,21 +3,17 @@ package com.equio.backend.savings.services;
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.budgets.entities.Budget;
-import com.equio.backend.budgets.repositories.BudgetRepository;
-import com.equio.backend.budgets.services.BudgetService;
+import com.equio.backend.budgets.services.BudgetLookupService;
 import com.equio.backend.savings.dto.requests.FundRequest;
 import com.equio.backend.savings.dto.requests.SavingGoalRequest;
 import com.equio.backend.savings.dto.responses.SavingGoalResponse;
 import com.equio.backend.savings.entities.SavingGoal;
 import com.equio.backend.savings.repositories.SavingGoalRepository;
-import com.equio.backend.transactions.entities.Category;
-import com.equio.backend.transactions.entities.Movement;
 import com.equio.backend.transactions.entities.enums.MovementType;
-import com.equio.backend.transactions.repositories.CategoryRepository;
-import com.equio.backend.transactions.repositories.MovementRepository;
+import com.equio.backend.transactions.dto.requests.CreateMovementRequest;
+import com.equio.backend.transactions.services.CreateMovementService;
 import com.equio.backend.users.entities.User;
-import com.equio.backend.users.repositories.UserRepository;
-import org.springframework.context.annotation.Lazy;
+import com.equio.backend.users.services.UserLookupService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,23 +26,20 @@ import java.util.List;
 public class SavingGoalServiceImpl implements SavingGoalService {
 
     private final SavingGoalRepository savingGoalRepository;
-    private final UserRepository userRepository;
-    private final BudgetRepository budgetRepository;
-    private final MovementRepository movementRepository;
-    private final BudgetService budgetService;
+    private final UserLookupService userLookupService;
+    private final BudgetLookupService budgetLookupService;
+    private final CreateMovementService createMovementService;
     private final RlsContext rlsContext;
 
     public SavingGoalServiceImpl(SavingGoalRepository savingGoalRepository,
-                                 UserRepository userRepository,
-                                 BudgetRepository budgetRepository,
-                                 MovementRepository movementRepository,
-                                 @Lazy BudgetService budgetService,
+                                 UserLookupService userLookupService,
+                                 BudgetLookupService budgetLookupService,
+                                 CreateMovementService createMovementService,
                                  RlsContext rlsContext) {
         this.savingGoalRepository = savingGoalRepository;
-        this.userRepository = userRepository;
-        this.budgetRepository = budgetRepository;
-        this.movementRepository = movementRepository;
-        this.budgetService = budgetService;
+        this.userLookupService = userLookupService;
+        this.budgetLookupService = budgetLookupService;
+        this.createMovementService = createMovementService;
         this.rlsContext = rlsContext;
     }
 
@@ -54,8 +47,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Transactional
     public SavingGoalResponse create(Long userId, SavingGoalRequest request) {
         rlsContext.setUserId(userId);
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User"));
+        User user = userLookupService.requireUser(userId);
 
         SavingGoal goal = new SavingGoal();
         goal.setName(request.name());
@@ -67,8 +59,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
         goal.setUser(user);
 
         if (request.budgetId() != null) {
-            Budget budget = budgetRepository.findByIdAndUserId(request.budgetId(), userId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Budget"));
+            Budget budget = budgetLookupService.requireOwnedBudget(userId, request.budgetId());
             goal.setBudget(budget);
         }
 
@@ -109,8 +100,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
         goal.setImageUrl(request.imageUrl());
 
         if (request.budgetId() != null) {
-            Budget budget = budgetRepository.findByIdAndUserId(request.budgetId(), userId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Budget"));
+            Budget budget = budgetLookupService.requireOwnedBudget(userId, request.budgetId());
             goal.setBudget(budget);
         } else {
             goal.setBudget(null);
@@ -130,8 +120,9 @@ public class SavingGoalServiceImpl implements SavingGoalService {
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
 
         String operation = request.operation().toUpperCase();
-        User user = goal.getUser();
-        Category goalCategory = goal.getBudget() != null ? goal.getBudget().getCategory() : null;
+        Long goalCategoryId = goal.getBudget() != null && goal.getBudget().getCategory() != null
+                ? goal.getBudget().getCategory().getId()
+                : null;
 
         if ("ADD".equals(operation)) {
             BigDecimal newAmount = goal.getCurrentAmount().add(request.amount());
@@ -143,17 +134,12 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             }
             goal.setCurrentAmount(newAmount);
 
-            Movement movement = new Movement();
-            movement.setUser(user);
-            movement.setAmount(request.amount());
-            movement.setType(MovementType.EXPENSE);
-            movement.setDescription("Aporte a meta: " + goal.getName());
-            movement.setDate(LocalDateTime.now());
-            movement.setCategory(goalCategory);
-            movementRepository.save(movement);
-
-            Long catId = goalCategory != null ? goalCategory.getId() : null;
-            budgetService.addExpense(userId, catId, request.amount());
+            createMovementService.createMovement(userId, new CreateMovementRequest(
+                    request.amount(),
+                    MovementType.EXPENSE,
+                    "Aporte a meta: " + goal.getName(),
+                    LocalDateTime.now(),
+                    goalCategoryId));
 
         } else if ("WITHDRAW".equals(operation)) {
             if (request.amount().compareTo(goal.getCurrentAmount()) > 0) {
@@ -163,14 +149,12 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             }
             goal.setCurrentAmount(goal.getCurrentAmount().subtract(request.amount()));
 
-            Movement movement = new Movement();
-            movement.setUser(user);
-            movement.setAmount(request.amount());
-            movement.setType(MovementType.INCOME);
-            movement.setDescription("Retiro de meta: " + goal.getName());
-            movement.setDate(LocalDateTime.now());
-            movement.setCategory(goalCategory);
-            movementRepository.save(movement);
+            createMovementService.createMovement(userId, new CreateMovementRequest(
+                    request.amount(),
+                    MovementType.INCOME,
+                    "Retiro de meta: " + goal.getName(),
+                    LocalDateTime.now(),
+                    goalCategoryId));
 
         } else {
             throw new IllegalArgumentException("Operación inválida. Use 'ADD' o 'WITHDRAW'");

@@ -1,4 +1,4 @@
-import ReactECharts from 'echarts-for-react';
+import { EChart } from '../../components/charts/EChart';
 import type { CategorySummary } from '../../types/dashboard.types';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
@@ -78,10 +78,9 @@ export function DonutChart({ data: categories, topCategories }: DonutChartProps)
   return (
     <div className="flex flex-col items-center w-full">
       <div className="relative w-48 h-48 flex items-center justify-center my-2">
-        <ReactECharts 
+        <EChart
           option={option} 
           style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'svg' }}
         />
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
           <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{t('dashboard.monthExpenses').toUpperCase()}</span>

@@ -1,8 +1,8 @@
 import apiClient from './apiClient';
-import type { CreateMovementRequest, MovementResponse } from '../types/movement.types';
+import type { CreateMovementRequest, MovementFilters, MovementResponse } from '../types/movement.types';
 
 export const movementsApi = {
-  getAll: async (filters?: { type?: string; categoryId?: number; startDate?: string; endDate?: string }) => {
+  getAll: async (filters?: MovementFilters) => {
     const response = await apiClient.get<MovementResponse[]>('/movements', { params: filters });
     return response.data;
   },

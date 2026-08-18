@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getApiErrorMessage } from '../utils/apiError';
 import { movementsApi } from '../api/movements.api';
-import type { MovementResponse, CreateMovementRequest } from '../types/movement.types';
+import type { MovementResponse, CreateMovementRequest, MovementFilters } from '../types/movement.types';
 import { useI18n } from '../i18n/i18nContextValue';
+import { invalidateDomains, queryKeys, queryStaleTimes } from '../api/queryCache';
 
-export function useMovements(filters?: { type?: string; categoryId?: number; startDate?: string; endDate?: string }) {
+export function useMovements(filters?: MovementFilters) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
 
@@ -14,43 +15,30 @@ export function useMovements(filters?: { type?: string; categoryId?: number; sta
     error,
     refetch
   } = useQuery<MovementResponse[]>({
-    queryKey: ['movements', filters],
-    queryFn: async () => {
-      return await movementsApi.getAll(filters);
-    }
+    queryKey: queryKeys.movements.list(filters),
+    queryFn: () => movementsApi.getAll(filters),
+    staleTime: queryStaleTimes.financial,
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateMovementRequest) => {
       return await movementsApi.create(data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['movements'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['budgets'] });
-    }
+    onSuccess: () => invalidateDomains(queryClient, ['movements', 'dashboard', 'budgets']),
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: CreateMovementRequest }) => {
       return await movementsApi.update(id, data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['movements'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['budgets'] });
-    }
+    onSuccess: () => invalidateDomains(queryClient, ['movements', 'dashboard', 'budgets']),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       return await movementsApi.delete(id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['movements'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['budgets'] });
-    }
+    onSuccess: () => invalidateDomains(queryClient, ['movements', 'dashboard', 'budgets']),
   });
 
   return {

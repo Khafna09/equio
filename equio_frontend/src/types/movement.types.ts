@@ -20,3 +20,10 @@ export interface CreateMovementRequest {
   categoryId?: number | null;
   date?: string;
 }
+
+export interface MovementFilters {
+  type?: MovementType;
+  categoryId?: number;
+  startDate?: string;
+  endDate?: string;
+}

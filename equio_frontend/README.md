@@ -2,7 +2,7 @@
 
 Aplicación web de finanzas personales construida con React 19, TypeScript, Vite, TanStack Query, Axios y Tailwind CSS. Incluye dashboard, movimientos, categorías, presupuestos reordenables, metas de ahorro y configuración bilingüe español/inglés.
 
-La auditoría y las decisiones de seguridad del sistema completo están en [SECURITY_AUDIT.md](../SECURITY_AUDIT.md).
+La auditoría y las decisiones de seguridad del sistema completo están en [SECURITY_AUDIT.md](../SECURITY_AUDIT.md). El despliegue en Cloudflare Pages está documentado en [docs/operations/DEPLOYMENT.md](../docs/operations/DEPLOYMENT.md).
 
 ## Requisitos
 
@@ -37,6 +37,8 @@ No agregues contraseñas, tokens privados ni claves de proveedores a variables `
 | `npm run dev` | Desarrollo con recarga en caliente |
 | `npm run lint` | ESLint para TypeScript, React y hooks |
 | `npm run check:i18n` | Paridad de cat?logos y claves usadas |
+| `npm run test` | Pruebas unitarias con Vitest |
+| `npm run test:watch` | Vitest en modo interactivo |
 | `npm run build` | Type-check y bundle de producción |
 | `npm run preview` | Previsualiza `dist` con las cabeceras locales |
 | `npm audit --audit-level=high` | Falla ante vulnerabilidades altas o críticas |
@@ -45,7 +47,7 @@ El build de producción está minificado y no publica source maps.
 
 ## Estructura
 
-- `src/api`: cliente Axios, endpoints por dominio y almacén de access token en memoria.
+- `src/api`: cliente Axios, endpoints por dominio, contratos de caché y almacén de access token en memoria.
 - `src/components/layout`: navegación, rutas protegidas y layout.
 - `src/components/ui`: controles reutilizables.
 - `src/contexts`: proveedor de autenticación.
@@ -58,11 +60,15 @@ El build de producción está minificado y no publica source maps.
 
 La lógica de dominio permanece en `api` y `hooks`; los componentes se concentran en presentación e interacción.
 
+`src/api/queryCache.ts` centraliza claves, tiempos de frescura e invalidaciones de TanStack Query. Las reglas puras extraídas de componentes deben tener una prueba `*.test.ts`. Consulta [Arquitectura](../docs/architecture/README.md) para los límites entre capas.
+
+En presupuestos, `budgetMetrics.ts` concentra los cálculos derivados, `useBudgetOrder.ts` aísla el orden persistido y `SavingsCard`/`BudgetActionModals` mantienen formularios y confirmaciones fuera de la vista coordinadora.
+
 ## Autenticación y sesión
 
 - El access token se mantiene en una variable de módulo; no se escribe en `localStorage` ni `sessionStorage`.
 - El refresh token nunca es accesible desde JavaScript: el backend lo entrega como cookie `HttpOnly`.
-- Axios usa `withCredentials` y envía `X-XSRF-TOKEN` para registro, login, refresh y logout.
+- Axios usa `withCredentials`, obtiene el token desde `/auth/csrf` y envía `X-XSRF-TOKEN` para registro, login, refresh y logout. No intenta leer una cookie perteneciente al subdominio de la API.
 - Un único refresh puede ejecutarse a la vez; las solicitudes que reciben 401 esperan esa operación y se reintentan una vez.
 - Al cargar la aplicación se restaura la sesión mediante refresh. Los antiguos valores `token` y `user` se eliminan de `localStorage`.
 - Logout revoca la sesión en el servidor y limpia el estado en memoria.
@@ -89,19 +95,17 @@ Los archivos fuente son UTF-8 y `index.html` declara `charset=UTF-8`. Al añadir
 
 La directiva `style-src 'unsafe-inline'` se mantiene por los estilos en línea que requieren las bibliotecas visuales actuales. No debe ampliarse a scripts.
 
-En producción el servidor/CDN debe enviar estas políticas como cabeceras HTTP, no depender solo de la etiqueta meta. También debe:
+En producción el build exige una `VITE_API_BASE_URL` HTTPS explícita y genera
+`dist/_headers`. Cloudflare Pages
+aplica CSP, HSTS, `nosniff`, protección de framing, políticas de permisos y
+COOP; mantiene el HTML con `no-store`, los assets con hash como inmutables y
+usa su fallback SPA nativo; React muestra la vista 404 para rutas desconocidas.
+CI comprueba que el artefacto exista y
+que la CSP contenga el origen configurado de la API.
 
-- Servir exclusivamente por HTTPS.
-- Añadir HSTS tras confirmar que todo el dominio funciona por HTTPS.
-- Enviar CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` y `Cross-Origin-Opener-Policy`.
-- Evitar cachear HTML autenticado de forma compartida.
-- Redirigir rutas SPA a `index.html`; React mostrará la vista 404 para rutas desconocidas.
-
-Ejemplo mínimo de CSP de producción, ajustando el origen de API:
-
-```text
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://images.unsplash.com; connect-src 'self' https://api.equio.example; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
-```
+ECharts se registra con su API modular y solo incluye los gráficos y
+componentes usados por Equio. Esto conserva SVG y reduce el chunk de gráficos
+sin cambiar la interfaz visual.
 
 ## Datos y caché
 
@@ -130,6 +134,7 @@ Las imágenes de metas se solicitan a `/api/v1/images/search`. El navegador nunc
 npm ci
 npm run lint
 npm run check:i18n
+npm run test
 npm run build
 npm audit --audit-level=high
 ```

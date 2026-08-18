@@ -16,6 +16,7 @@ import { useI18n } from '../../i18n/i18nContextValue';
 import type { BudgetResponse } from '../../types/budget.types';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
+import { calculateFixedBudgetPeriod, type BudgetCatchUpOption } from './budgetPeriod';
 
 interface BudgetDrawerProps {
   isOpen: boolean;
@@ -67,7 +68,7 @@ function BudgetDrawerContent({
   const [startDay] = useState(initialStartDay);
   const [startDate, setStartDate] = useState(periodSource?.startDate ?? today);
   const [endDate, setEndDate] = useState(periodSource?.endDate ?? today);
-  const [catchUpOption, setCatchUpOption] = useState<'RETROACTIVE' | 'FROM_TODAY'>('RETROACTIVE');
+  const [catchUpOption, setCatchUpOption] = useState<BudgetCatchUpOption>('RETROACTIVE');
   const [futureRenewDay, setFutureRenewDay] = useState<number | ''>('');
   const [hasInteractedWithPeriod, setHasInteractedWithPeriod] = useState(false);
   const [selectedSubBudgetsToAdopt, setSelectedSubBudgetsToAdopt] = useState<number[]>([]);
@@ -90,62 +91,21 @@ function BudgetDrawerContent({
 
       if (isFixed) {
         const today = new Date();
-        const todayDay = today.getDate();
-        const currentMonth = today.getMonth();
-        const currentYear = today.getFullYear();
 
         if (budgetToEdit?.id != null) {
           finalStartDate = budgetToEdit.startDate ?? startDate;
           finalEndDate = budgetToEdit.endDate ?? endDate;
           isRetroactive = false;
         } else {
-          const renewDay = Number(futureRenewDay) || 1;
-          let effectiveCatchUpOption = catchUpOption;
-          if (!isAdvancedMode && renewDay === todayDay) {
-            effectiveCatchUpOption = 'FROM_TODAY';
-          }
-
-          if (effectiveCatchUpOption === 'RETROACTIVE') {
-            if (!isAdvancedMode) {
-              // Modo Normal: Retroactivo desde el día elegido del mes correspondiente
-              let cycleStart: Date;
-              if (renewDay > todayDay) {
-                 cycleStart = new Date(currentYear, currentMonth - 1, renewDay);
-              } else {
-                 cycleStart = new Date(currentYear, currentMonth, renewDay);
-              }
-              const cycleEnd = new Date(cycleStart);
-              cycleEnd.setMonth(cycleEnd.getMonth() + 1);
-              cycleEnd.setDate(cycleEnd.getDate() - 1);
-
-              finalStartDate = format(cycleStart, 'yyyy-MM-dd');
-              finalEndDate = format(cycleEnd, 'yyyy-MM-dd');
-              isRetroactive = true;
-            } else {
-              // Modo Avanzado (opción 1): Retroactivo siempre desde el día 1 de este mes
-              const start = new Date(currentYear, currentMonth, 1);
-              const end = new Date(currentYear, currentMonth + 1, 0);
-              finalStartDate = format(start, 'yyyy-MM-dd');
-              finalEndDate = format(end, 'yyyy-MM-dd');
-              isRetroactive = true;
-            }
-          } else {
-            // Opción 2 / Desde Hoy: Empezar hoy en $0 y definir día de reinicio futuro
-            finalStartDate = format(today, 'yyyy-MM-dd');
-
-            let nextCycleStart: Date;
-            if (renewDay > todayDay) {
-              nextCycleStart = new Date(currentYear, currentMonth, renewDay);
-            } else {
-              nextCycleStart = new Date(currentYear, currentMonth + 1, renewDay);
-            }
-
-            const firstCycleEnd = new Date(nextCycleStart);
-            firstCycleEnd.setDate(firstCycleEnd.getDate() - 1);
-
-            finalEndDate = format(firstCycleEnd, 'yyyy-MM-dd');
-            isRetroactive = false;
-          }
+          const period = calculateFixedBudgetPeriod({
+            today,
+            renewDay: Number(futureRenewDay) || 1,
+            catchUpOption,
+            advancedMode: isAdvancedMode,
+          });
+          finalStartDate = period.startDate;
+          finalEndDate = period.endDate;
+          isRetroactive = period.retroactive;
         }
       }
 

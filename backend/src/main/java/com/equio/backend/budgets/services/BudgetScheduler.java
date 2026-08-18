@@ -3,8 +3,9 @@ package com.equio.backend.budgets.services;
 import com.equio.backend.budgets.entities.Budget;
 import com.equio.backend.budgets.entities.enums.BudgetStatus;
 import com.equio.backend.budgets.repositories.BudgetRepository;
+import com.equio.backend.shared.jobs.DatabaseJobLock;
 import com.equio.backend.shared.security.RlsContext;
-import com.equio.backend.users.repositories.UserRepository;
+import com.equio.backend.users.services.UserLookupService;
 import org.slf4j.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -16,26 +17,34 @@ import java.time.LocalDate;
 @Service
 public class BudgetScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(BudgetScheduler.class);
+    private static final long JOB_LOCK_ID = 1_001L;
 
     private final BudgetRepository budgetRepository;
-    private final UserRepository userRepository;
+    private final UserLookupService userLookupService;
     private final RlsContext rlsContext;
+    private final DatabaseJobLock jobLock;
 
     public BudgetScheduler(
             BudgetRepository budgetRepository,
-            UserRepository userRepository,
-            RlsContext rlsContext
+            UserLookupService userLookupService,
+            RlsContext rlsContext,
+            DatabaseJobLock jobLock
     ) {
         this.budgetRepository = budgetRepository;
-        this.userRepository = userRepository;
+        this.userLookupService = userLookupService;
         this.rlsContext = rlsContext;
+        this.jobLock = jobLock;
     }
 
     @Scheduled(cron = "0 0 0 * * ?")
     @Transactional
     public void processExpiredBudgets() {
+        if (!jobLock.tryAcquire(JOB_LOCK_ID)) {
+            LOGGER.info("Expired budget processing skipped because another instance owns the job");
+            return;
+        }
         LocalDate today = LocalDate.now();
-        for (Long userId : userRepository.findAllIds()) {
+        for (Long userId : userLookupService.findAllUserIds()) {
             rlsContext.setUserId(userId);
             var activeBudgets = budgetRepository
                     .findByUserIdAndStatus(userId, BudgetStatus.ACTIVE)

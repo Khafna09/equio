@@ -1,6 +1,6 @@
-package com.equio.backend.transactions.services;
+package com.equio.backend.dashboard.services;
 
-import com.equio.backend.transactions.dto.responses.DashboardSummaryResponse;
+import com.equio.backend.dashboard.dto.responses.DashboardSummaryResponse;
 
 public interface DashboardService {
 

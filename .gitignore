@@ -3,5 +3,10 @@ target/
 .idea/
 dist/
 .env
+.env.*
+!.env.example
 .DS_Store
-/SECURITY_AUDIT.md
+*.log
+*.pid
+*.hprof
+.vscode/

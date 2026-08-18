@@ -1,5 +1,6 @@
-package com.equio.backend.images;
+package com.equio.backend.images.controllers;
 
+import com.equio.backend.images.services.UnsplashImageService;
 import jakarta.validation.constraints.*;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;

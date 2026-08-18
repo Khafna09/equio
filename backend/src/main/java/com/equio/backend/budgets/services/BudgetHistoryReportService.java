@@ -8,11 +8,11 @@ import com.equio.backend.budgets.repositories.BudgetRepository;
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import com.equio.backend.shared.exceptions.ReportTooLargeException;
 import com.equio.backend.shared.security.RlsContext;
-import com.equio.backend.transactions.entities.Category;
-import com.equio.backend.transactions.entities.Movement;
 import com.equio.backend.transactions.entities.enums.MovementType;
-import com.equio.backend.transactions.repositories.CategoryRepository;
-import com.equio.backend.transactions.repositories.MovementRepository;
+import com.equio.backend.transactions.services.CategoryLookupService;
+import com.equio.backend.transactions.services.CategoryLookupService.CategorySnapshot;
+import com.equio.backend.transactions.services.MovementQueryService;
+import com.equio.backend.transactions.services.MovementQueryService.MovementSnapshot;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,22 +38,22 @@ public class BudgetHistoryReportService {
     private static final long MAX_TIMELINE_POINTS = 366;
 
     private final BudgetRepository budgetRepository;
-    private final MovementRepository movementRepository;
-    private final CategoryRepository categoryRepository;
+    private final MovementQueryService movementQueryService;
+    private final CategoryLookupService categoryLookupService;
     private final RlsContext rlsContext;
     private final int maxReportMovements;
 
     public BudgetHistoryReportService(BudgetRepository budgetRepository,
-                                      MovementRepository movementRepository,
-                                      CategoryRepository categoryRepository,
+                                      MovementQueryService movementQueryService,
+                                      CategoryLookupService categoryLookupService,
                                       RlsContext rlsContext,
                                       @Value("${app.reports.max-movements:2000}") int maxReportMovements) {
         if (maxReportMovements < 100 || maxReportMovements > 10_000) {
             throw new IllegalStateException("Report movement limit must be between 100 and 10000");
         }
         this.budgetRepository = budgetRepository;
-        this.movementRepository = movementRepository;
-        this.categoryRepository = categoryRepository;
+        this.movementQueryService = movementQueryService;
+        this.categoryLookupService = categoryLookupService;
         this.rlsContext = rlsContext;
         this.maxReportMovements = maxReportMovements;
     }
@@ -72,12 +72,12 @@ public class BudgetHistoryReportService {
 
         LocalDate startDate = budget.getStartDate();
         LocalDate endDate = budget.getEndDate();
-        List<Movement> movements = getMovements(userId, startDate, endDate, true);
-        List<Movement> expenses = movements.stream()
-                .filter(movement -> movement.getType() == MovementType.EXPENSE)
+        List<MovementSnapshot> movements = getMovements(userId, startDate, endDate, true);
+        List<MovementSnapshot> expenses = movements.stream()
+                .filter(movement -> movement.type() == MovementType.EXPENSE)
                 .toList();
-        List<Movement> incomes = movements.stream()
-                .filter(movement -> movement.getType() == MovementType.INCOME)
+        List<MovementSnapshot> incomes = movements.stream()
+                .filter(movement -> movement.type() == MovementType.INCOME)
                 .toList();
 
         BigDecimal totalExpenses = sumAmounts(expenses);
@@ -92,7 +92,7 @@ public class BudgetHistoryReportService {
                 .filter(child -> child.getStatus() == BudgetStatus.CLOSED)
                 .toList();
         List<BudgetHistoryReportResponse.CategoryConsumption> categories = buildCategories(
-                expenses, children, categoryRepository.findByUserId(userId));
+                expenses, children, categoryLookupService.findByUser(userId));
         List<BudgetHistoryReportResponse.CategoryConsumption> topCategories = categories.stream()
                 .filter(category -> category.spentAmount().signum() > 0)
                 .sorted(Comparator.comparing(BudgetHistoryReportResponse.CategoryConsumption::spentAmount).reversed())
@@ -121,13 +121,13 @@ public class BudgetHistoryReportService {
                 .map(entry -> new BudgetHistoryReportResponse.SpendingPeak(entry.getKey(), entry.getValue()))
                 .orElse(null);
         BigDecimal weekendExpenses = expenses.stream()
-                .filter(movement -> isWeekend(movement.getDate().toLocalDate()))
-                .map(Movement::getAmount)
+                .filter(movement -> isWeekend(movement.date().toLocalDate()))
+                .map(MovementSnapshot::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         double weekendExpensePercentage = percentage(weekendExpenses, totalExpenses);
         Map<DayOfWeek, BigDecimal> expensesByWeekday = new HashMap<>();
-        for (Movement expense : expenses) {
-            expensesByWeekday.merge(expense.getDate().getDayOfWeek(), expense.getAmount(), BigDecimal::add);
+        for (MovementSnapshot expense : expenses) {
+            expensesByWeekday.merge(expense.date().getDayOfWeek(), expense.amount(), BigDecimal::add);
         }
         BudgetHistoryReportResponse.WeekdayInsight mostExpensiveWeekday = expensesByWeekday.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
@@ -136,7 +136,7 @@ public class BudgetHistoryReportService {
                 .orElse(null);
 
         List<BudgetHistoryReportResponse.ExpenseItem> highestExpenses = expenses.stream()
-                .sorted(Comparator.comparing(Movement::getAmount).reversed())
+                .sorted(Comparator.comparing(MovementSnapshot::amount).reversed())
                 .limit(5)
                 .map(this::toExpenseItem)
                 .toList();
@@ -184,7 +184,7 @@ public class BudgetHistoryReportService {
         );
     }
 
-    private List<Movement> getMovements(
+    private List<MovementSnapshot> getMovements(
             Long userId,
             LocalDate startDate,
             LocalDate endDate,
@@ -192,41 +192,41 @@ public class BudgetHistoryReportService {
     ) {
         LocalDateTime start = startDate.atStartOfDay();
         LocalDateTime end = endDate.atTime(23, 59, 59);
-        long movementCount = movementRepository.countByUserIdAndDateBetween(userId, start, end);
+        long movementCount = movementQueryService.countByPeriod(userId, start, end);
         if (movementCount > maxReportMovements) {
             if (failWhenTooLarge) {
                 throw new ReportTooLargeException(maxReportMovements);
             }
             return null;
         }
-        return movementRepository.findByUserIdAndDateBetweenOrderByDateDesc(
-                userId, start, end);
+        return movementQueryService.findByPeriod(userId, start, end);
     }
 
     private List<BudgetHistoryReportResponse.CategoryConsumption> buildCategories(
-            List<Movement> expenses, List<Budget> children, List<Category> allCategories) {
+            List<MovementSnapshot> expenses,
+            List<Budget> children,
+            List<CategorySnapshot> allCategories) {
         Map<Long, CategoryAccumulator> byCategory = new LinkedHashMap<>();
         Map<Long, BigDecimal> limits = new HashMap<>();
         for (Budget child : children) {
-            Category category = child.getCategory();
+            var category = child.getCategory();
             if (category == null) continue;
             limits.put(category.getId(), child.getTotalAmount());
         }
-        for (Category category : allCategories) {
-            byCategory.put(category.getId(), new CategoryAccumulator(
-                    category.getId(), category.getName(), category.getColor(), category.getIcon(), limits.get(category.getId())));
+        for (CategorySnapshot category : allCategories) {
+            byCategory.put(category.id(), new CategoryAccumulator(
+                    category.id(), category.name(), category.color(), category.icon(), limits.get(category.id())));
         }
         byCategory.put(-1L, new CategoryAccumulator(null, "Uncategorized", "#a1a1aa", null, null));
-        for (Movement expense : expenses) {
-            Category category = expense.getCategory();
-            Long key = category != null ? category.getId() : -1L;
+        for (MovementSnapshot expense : expenses) {
+            Long key = expense.categoryId() != null ? expense.categoryId() : -1L;
             CategoryAccumulator accumulator = byCategory.computeIfAbsent(key, ignored -> new CategoryAccumulator(
-                    category != null ? category.getId() : null,
-                    category != null ? category.getName() : "Uncategorized",
-                    category != null ? category.getColor() : "#a1a1aa",
-                    category != null ? category.getIcon() : null,
+                    expense.categoryId(),
+                    expense.categoryName(),
+                    expense.categoryColor(),
+                    expense.categoryIcon(),
                     null));
-            accumulator.spent = accumulator.spent.add(expense.getAmount());
+            accumulator.spent = accumulator.spent.add(expense.amount());
         }
         return byCategory.values().stream()
                 .map(CategoryAccumulator::toResponse)
@@ -234,14 +234,14 @@ public class BudgetHistoryReportService {
                 .toList();
     }
 
-    private List<BudgetHistoryReportResponse.GoalContribution> buildGoalContributions(List<Movement> expenses) {
+    private List<BudgetHistoryReportResponse.GoalContribution> buildGoalContributions(List<MovementSnapshot> expenses) {
         Map<String, BigDecimal> totals = new LinkedHashMap<>();
-        for (Movement expense : expenses) {
-            String description = expense.getDescription();
+        for (MovementSnapshot expense : expenses) {
+            String description = expense.description();
             if (description == null || !description.startsWith(GOAL_CONTRIBUTION_PREFIX)) continue;
             String goalName = description.substring(GOAL_CONTRIBUTION_PREFIX.length()).trim();
             if (goalName.isBlank()) goalName = "Savings goal";
-            totals.merge(goalName, expense.getAmount(), BigDecimal::add);
+            totals.merge(goalName, expense.amount(), BigDecimal::add);
         }
         return totals.entrySet().stream()
                 .map(entry -> new BudgetHistoryReportResponse.GoalContribution(entry.getKey(), entry.getValue()))
@@ -249,10 +249,10 @@ public class BudgetHistoryReportService {
                 .toList();
     }
 
-    private Map<LocalDate, BigDecimal> buildDailyExpenses(List<Movement> expenses) {
+    private Map<LocalDate, BigDecimal> buildDailyExpenses(List<MovementSnapshot> expenses) {
         Map<LocalDate, BigDecimal> daily = new HashMap<>();
-        for (Movement expense : expenses) {
-            daily.merge(expense.getDate().toLocalDate(), expense.getAmount(), BigDecimal::add);
+        for (MovementSnapshot expense : expenses) {
+            daily.merge(expense.date().toLocalDate(), expense.amount(), BigDecimal::add);
         }
         return daily;
     }
@@ -287,7 +287,7 @@ public class BudgetHistoryReportService {
             Long userId,
             Budget currentBudget,
             LocalDate currentStart,
-            List<Movement> currentExpenses,
+            List<MovementSnapshot> currentExpenses,
             BigDecimal currentTotalExpenses) {
         Budget previous = budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.CLOSED).stream()
                 .filter(candidate -> candidate.getCategory() == null)
@@ -298,12 +298,12 @@ public class BudgetHistoryReportService {
                 .orElse(null);
         if (previous == null) return null;
 
-        List<Movement> previousMovements = getMovements(
+        List<MovementSnapshot> previousMovements = getMovements(
                 userId, previous.getStartDate(), previous.getEndDate(), false);
         if (previousMovements == null) return null;
 
-        List<Movement> previousExpenses = previousMovements.stream()
-                .filter(movement -> movement.getType() == MovementType.EXPENSE)
+        List<MovementSnapshot> previousExpenses = previousMovements.stream()
+                .filter(movement -> movement.type() == MovementType.EXPENSE)
                 .toList();
         BigDecimal previousTotal = sumAmounts(previousExpenses);
         Double changePercentage = previousTotal.signum() == 0
@@ -344,41 +344,38 @@ public class BudgetHistoryReportService {
         );
     }
 
-    private Map<String, NamedAmount> categoryTotals(List<Movement> expenses) {
+    private Map<String, NamedAmount> categoryTotals(List<MovementSnapshot> expenses) {
         Map<String, NamedAmount> totals = new HashMap<>();
-        for (Movement expense : expenses) {
-            Category category = expense.getCategory();
-            String key = category != null ? String.valueOf(category.getId()) : "uncategorized";
-            String name = category != null ? category.getName() : "Uncategorized";
+        for (MovementSnapshot expense : expenses) {
+            String key = expense.categoryId() != null ? String.valueOf(expense.categoryId()) : "uncategorized";
+            String name = expense.categoryName();
             NamedAmount current = totals.get(key);
-            totals.put(key, new NamedAmount(name, (current != null ? current.amount : BigDecimal.ZERO).add(expense.getAmount())));
+            totals.put(key, new NamedAmount(name, (current != null ? current.amount : BigDecimal.ZERO).add(expense.amount())));
         }
         return totals;
     }
 
-    private BudgetHistoryReportResponse.ExpenseItem toExpenseItem(Movement movement) {
-        Category category = movement.getCategory();
+    private BudgetHistoryReportResponse.ExpenseItem toExpenseItem(MovementSnapshot movement) {
         return new BudgetHistoryReportResponse.ExpenseItem(
-                movement.getId(),
-                movement.getDate(),
-                movement.getDescription(),
-                category != null ? category.getName() : "Uncategorized",
-                movement.getAmount()
+                movement.id(),
+                movement.date(),
+                movement.description(),
+                movement.categoryName(),
+                movement.amount()
         );
     }
 
-    private BudgetHistoryReportResponse.MovementItem toMovementItem(Movement movement) {
-        Category category = movement.getCategory();
+    private BudgetHistoryReportResponse.MovementItem toMovementItem(MovementSnapshot movement) {
         return new BudgetHistoryReportResponse.MovementItem(
-                movement.getId(),
-                movement.getDate(),
-                movement.getType().name(),
-                movement.getDescription(),
-                category != null ? category.getId() : null,
-                category != null ? category.getName() : "Uncategorized",
-                category != null ? category.getColor() : "#a1a1aa",
-                category != null ? category.getIcon() : null,
-                movement.getAmount()
+                movement.id(),
+                movement.date(),
+                movement.type().name(),
+                movement.description(),
+                movement.categoryId(),
+                movement.categoryName(),
+                movement.categoryColor(),
+                movement.categoryIcon(),
+                movement.amount()
         );
     }
 
@@ -389,8 +386,8 @@ public class BudgetHistoryReportService {
                 .divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal sumAmounts(List<Movement> movements) {
-        return movements.stream().map(Movement::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    private BigDecimal sumAmounts(List<MovementSnapshot> movements) {
+        return movements.stream().map(MovementSnapshot::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private double percentage(BigDecimal value, BigDecimal total) {

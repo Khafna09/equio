@@ -82,7 +82,11 @@ public class SecurityConfig {
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                         .requireCsrfProtectionMatcher(csrfProtectedEndpoints()))
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers("/api/v1/auth/**", "/error").permitAll();
+                    auth.requestMatchers(
+                            "/api/v1/auth/**",
+                            "/actuator/health/liveness",
+                            "/error"
+                    ).permitAll();
                     if (swaggerPublic) {
                         auth.requestMatchers(
                                 "/v3/api-docs/**",
@@ -102,6 +106,9 @@ public class SecurityConfig {
                                 "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"))
                         .referrerPolicy(referrer -> referrer.policy(
                                 ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31_536_000))
                         .addHeaderWriter(new StaticHeadersWriter(
                                 "Permissions-Policy",
                                 "camera=(), microphone=(), geolocation=(), payment=()")))

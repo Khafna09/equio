@@ -7,12 +7,13 @@ import com.equio.backend.budgets.repositories.BudgetRepository;
 import com.equio.backend.shared.exceptions.ReportTooLargeException;
 import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.transactions.entities.Category;
-import com.equio.backend.transactions.entities.Movement;
 import com.equio.backend.transactions.entities.enums.MovementType;
-import com.equio.backend.transactions.repositories.CategoryRepository;
-import com.equio.backend.transactions.repositories.MovementRepository;
+import com.equio.backend.transactions.services.CategoryLookupService;
+import com.equio.backend.transactions.services.CategoryLookupService.CategorySnapshot;
+import com.equio.backend.transactions.services.MovementQueryService;
+import com.equio.backend.transactions.services.MovementQueryService.MovementSnapshot;
 import com.equio.backend.users.entities.User;
-import com.equio.backend.users.repositories.ProfileRepository;
+import com.equio.backend.users.services.ProfilePreferencesService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,19 +37,19 @@ import static org.mockito.Mockito.when;
 class BudgetHistoryReportServiceTest {
 
     private BudgetRepository budgetRepository;
-    private MovementRepository movementRepository;
-    private CategoryRepository categoryRepository;
+    private MovementQueryService movementQueryService;
+    private CategoryLookupService categoryLookupService;
     private RlsContext rlsContext;
     private BudgetHistoryReportService service;
 
     @BeforeEach
     void setUp() {
         budgetRepository = mock(BudgetRepository.class);
-        movementRepository = mock(MovementRepository.class);
-        categoryRepository = mock(CategoryRepository.class);
+        movementQueryService = mock(MovementQueryService.class);
+        categoryLookupService = mock(CategoryLookupService.class);
         rlsContext = mock(RlsContext.class);
         service = new BudgetHistoryReportService(
-                budgetRepository, movementRepository, categoryRepository, rlsContext, 2000);
+                budgetRepository, movementQueryService, categoryLookupService, rlsContext, 2000);
     }
 
     @Test
@@ -87,23 +88,24 @@ class BudgetHistoryReportServiceTest {
         child.setTotalAmount(new BigDecimal("400.00"));
         child.setParentBudget(global);
 
-        List<Movement> movements = List.of(
-                movement(1L, user, MovementType.INCOME, "2000.00", "Salary", null, LocalDateTime.of(2026, 8, 1, 9, 0)),
-                movement(2L, user, MovementType.EXPENSE, "500.00", "Groceries", food, LocalDateTime.of(2026, 8, 14, 12, 0)),
-                movement(3L, user, MovementType.EXPENSE, "100.00", "Transport", null, LocalDateTime.of(2026, 8, 15, 10, 0)),
-                movement(4L, user, MovementType.EXPENSE, "200.00", "Aporte a meta: Japan", null, LocalDateTime.of(2026, 8, 16, 10, 0))
+        List<MovementSnapshot> movements = List.of(
+                movement(1L, MovementType.INCOME, "2000.00", "Salary", null, LocalDateTime.of(2026, 8, 1, 9, 0)),
+                movement(2L, MovementType.EXPENSE, "500.00", "Groceries", food, LocalDateTime.of(2026, 8, 14, 12, 0)),
+                movement(3L, MovementType.EXPENSE, "100.00", "Transport", null, LocalDateTime.of(2026, 8, 15, 10, 0)),
+                movement(4L, MovementType.EXPENSE, "200.00", "Aporte a meta: Japan", null, LocalDateTime.of(2026, 8, 16, 10, 0))
         );
 
         when(budgetRepository.findByIdAndUserId(10L, 1L)).thenReturn(Optional.of(global));
         when(budgetRepository.findByParentBudgetId(10L)).thenReturn(List.of(child));
         when(budgetRepository.findByUserIdAndStatus(1L, BudgetStatus.CLOSED)).thenReturn(List.of(global));
-        when(categoryRepository.findByUserId(1L)).thenReturn(List.of(food, utilities));
-        when(movementRepository.countByUserIdAndDateBetween(
+        when(categoryLookupService.findByUser(1L)).thenReturn(List.of(
+                category(food), category(utilities)));
+        when(movementQueryService.countByPeriod(
                 1L,
                 LocalDate.of(2026, 8, 1).atStartOfDay(),
                 LocalDate.of(2026, 8, 31).atTime(23, 59, 59)))
                 .thenReturn(4L);
-        when(movementRepository.findByUserIdAndDateBetweenOrderByDateDesc(
+        when(movementQueryService.findByPeriod(
                 1L,
                 LocalDate.of(2026, 8, 1).atStartOfDay(),
                 LocalDate.of(2026, 8, 31).atTime(23, 59, 59)))
@@ -134,10 +136,11 @@ class BudgetHistoryReportServiceTest {
         assertNull(report.comparison());
         verify(rlsContext).setUserId(1L);
 
-        ProfileRepository profileRepository = mock(ProfileRepository.class);
+        ProfilePreferencesService profilePreferencesService = mock(ProfilePreferencesService.class);
         RlsContext pdfRlsContext = mock(RlsContext.class);
-        when(profileRepository.findByUserId(1L)).thenReturn(Optional.empty());
-        byte[] pdf = new BudgetHistoryPdfService(profileRepository, pdfRlsContext).generate(1L, report);
+        when(profilePreferencesService.findPreferences(1L))
+                .thenReturn(new ProfilePreferencesService.Preferences("es", "PEN"));
+        byte[] pdf = new BudgetHistoryPdfService(profilePreferencesService, pdfRlsContext).generate(1L, report);
 
         assertTrue(pdf.length > 5);
         assertEquals("%PDF-", new String(pdf, 0, 5, StandardCharsets.US_ASCII));
@@ -169,7 +172,7 @@ class BudgetHistoryReportServiceTest {
         closed.setEndDate(LocalDate.of(2026, 1, 31));
 
         when(budgetRepository.findByIdAndUserId(30L, 1L)).thenReturn(Optional.of(closed));
-        when(movementRepository.countByUserIdAndDateBetween(
+        when(movementQueryService.countByPeriod(
                 1L,
                 LocalDate.of(2026, 1, 1).atStartOfDay(),
                 LocalDate.of(2026, 1, 31).atTime(23, 59, 59)))
@@ -178,21 +181,26 @@ class BudgetHistoryReportServiceTest {
         assertThrows(ReportTooLargeException.class, () -> service.getReport(1L, 30L));
     }
 
-    private Movement movement(Long id,
-                              User user,
-                              MovementType type,
-                              String amount,
-                              String description,
-                              Category category,
-                              LocalDateTime date) {
-        Movement movement = new Movement();
-        movement.setId(id);
-        movement.setUser(user);
-        movement.setType(type);
-        movement.setAmount(new BigDecimal(amount));
-        movement.setDescription(description);
-        movement.setCategory(category);
-        movement.setDate(date);
-        return movement;
+    private MovementSnapshot movement(Long id,
+                                      MovementType type,
+                                      String amount,
+                                      String description,
+                                      Category category,
+                                      LocalDateTime date) {
+        return new MovementSnapshot(
+                id,
+                new BigDecimal(amount),
+                type,
+                description,
+                date,
+                category != null ? category.getId() : null,
+                category != null ? category.getName() : "Uncategorized",
+                category != null ? category.getColor() : "#a1a1aa",
+                category != null ? category.getIcon() : null);
+    }
+
+    private CategorySnapshot category(Category category) {
+        return new CategorySnapshot(
+                category.getId(), category.getName(), category.getColor(), category.getIcon());
     }
 }

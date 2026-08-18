@@ -4,6 +4,7 @@ import { profileApi, type ProfileRequest, type ProfileResponse } from '../api/pr
 import { useAuth } from '../contexts/authContextValue';
 import { useEffect } from 'react';
 import { useI18n } from '../i18n/i18nContextValue';
+import { queryKeys, queryStaleTimes } from '../api/queryCache';
 
 export function useProfile() {
   const queryClient = useQueryClient();
@@ -16,10 +17,9 @@ export function useProfile() {
     error,
     refetch
   } = useQuery<ProfileResponse>({
-    queryKey: ['profile'],
-    queryFn: async () => {
-      return await profileApi.getMyProfile();
-    }
+    queryKey: queryKeys.profile.root,
+    queryFn: profileApi.getMyProfile,
+    staleTime: queryStaleTimes.profile,
   });
 
   useEffect(() => {
@@ -51,15 +51,15 @@ export function useProfile() {
       return await profileApi.updateMyProfile(data);
     },
     onMutate: async (data) => {
-      await queryClient.cancelQueries({ queryKey: ['profile'] });
-      queryClient.setQueryData<ProfileResponse>(['profile'], (current) =>
+      await queryClient.cancelQueries({ queryKey: queryKeys.profile.root });
+      queryClient.setQueryData<ProfileResponse>(queryKeys.profile.root, (current) =>
         current ? { ...current, ...data } : current
       );
     },
     onSuccess: (updatedProfile, data) => {
-      const current = queryClient.getQueryData<ProfileResponse>(['profile']);
+      const current = queryClient.getQueryData<ProfileResponse>(queryKeys.profile.root);
       const mergedProfile = { ...updatedProfile, ...current, ...data };
-      queryClient.setQueryData(['profile'], mergedProfile);
+      queryClient.setQueryData(queryKeys.profile.root, mergedProfile);
       document.documentElement.classList.toggle('dark', mergedProfile.theme === 'dark');
 
       const profileLanguage = mergedProfile.language === 'en' ? 'en' : 'es';
@@ -71,7 +71,7 @@ export function useProfile() {
       setLanguage(profileLanguage);
     },
     onError: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.profile.root });
     }
   });
 

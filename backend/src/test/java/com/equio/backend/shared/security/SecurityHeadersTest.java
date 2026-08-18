@@ -50,4 +50,14 @@ class SecurityHeadersTest {
                 .andExpect(cookie().exists("XSRF-TOKEN"))
                 .andExpect(jsonPath("$.token").isNotEmpty());
     }
+
+    @Test
+    void exposesOnlyThePublicLivenessProbe() throws Exception {
+        mockMvc.perform(get("/actuator/health/liveness"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isUnauthorized());
+    }
 }

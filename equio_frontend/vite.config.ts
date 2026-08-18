@@ -3,11 +3,41 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-function cspPlugin(connectSources: string): Plugin {
+function cspPlugin(scriptSources: string, connectSources: string): Plugin {
   return {
     name: 'equio-csp',
     transformIndexHtml(html) {
-      return html.replace('__CSP_CONNECT_SRC__', connectSources);
+      return html
+        .replace('__CSP_SCRIPT_SRC__', scriptSources)
+        .replace('__CSP_CONNECT_SRC__', connectSources);
+    },
+  };
+}
+
+function deploymentArtifactsPlugin(contentSecurityPolicy: string): Plugin {
+  const headers = [
+    '/*',
+    '  X-Content-Type-Options: nosniff',
+    '  X-Frame-Options: DENY',
+    '  Referrer-Policy: no-referrer',
+    '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()',
+    '  Cross-Origin-Opener-Policy: same-origin',
+    '  Cross-Origin-Resource-Policy: same-origin',
+    `  Content-Security-Policy: ${contentSecurityPolicy}`,
+    '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
+    '  Cache-Control: no-store, max-age=0',
+    '',
+    '/assets/*',
+    '  ! Cache-Control',
+    '  Cache-Control: public, max-age=31536000, immutable',
+    '',
+  ].join('\n');
+
+  return {
+    name: 'equio-deployment-artifacts',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: '_headers', source: headers });
     },
   };
 }
@@ -23,12 +53,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiUrl = env.VITE_API_BASE_URL || 'http://localhost:8081/api/v1';
   const parsedApiUrl = apiUrl.startsWith('/') ? null : new URL(apiUrl);
-  const isLocalApi = parsedApiUrl != null
-    && ['localhost', '127.0.0.1', '[::1]'].includes(parsedApiUrl.hostname);
   if (mode === 'production'
-      && parsedApiUrl?.protocol !== 'https:'
-      && !isLocalApi) {
-    throw new Error('VITE_API_BASE_URL must use HTTPS outside local development');
+      && (!env.VITE_API_BASE_URL || parsedApiUrl?.protocol !== 'https:')) {
+    throw new Error('Production requires an explicit HTTPS VITE_API_BASE_URL');
   }
   const apiOrigin = apiUrl.startsWith('/')
     ? "'self'"
@@ -36,9 +63,12 @@ export default defineConfig(({ mode }) => {
   const connectSources = mode === 'development'
     ? `${apiOrigin} ws://localhost:*`
     : apiOrigin;
+  const scriptSources = mode === 'development'
+    ? "'self' 'unsafe-inline'"
+    : "'self'";
   const contentSecurityPolicy = [
     "default-src 'self'",
-    "script-src 'self' 'sha256-Z2/iFzh9VMlVkEOar1f/oSHWwQk3ve1qk/C2WdsC4Xk='",
+    `script-src ${scriptSources}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://images.unsplash.com",
     `connect-src 'self' ${connectSources}`,
@@ -55,7 +85,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
-      cspPlugin(connectSources),
+      cspPlugin(scriptSources, connectSources),
+      deploymentArtifactsPlugin(contentSecurityPolicy),
       react(),
       tailwindcss(),
     ],

@@ -2,7 +2,9 @@
 
 API REST de Equio para autenticación, perfiles, categorías, movimientos, presupuestos, dashboard y metas de ahorro. La aplicación usa Spring Boot 4, Java 21, Spring Security, JPA/Hibernate, Flyway y PostgreSQL.
 
-El diseño de seguridad y las decisiones pendientes de infraestructura están documentados en [SECURITY_AUDIT.md](../SECURITY_AUDIT.md).
+El backend es un monolito modular. `dashboard` compone lecturas de presupuestos y movimientos, mientras los módulos propietarios exponen fachadas de aplicación; los servicios no importan repositorios ajenos. Los efectos entre movimientos, presupuestos y metas usan eventos síncronos dentro de la transacción actual.
+
+El diseño de seguridad y las decisiones pendientes de infraestructura están documentados en [SECURITY_AUDIT.md](../SECURITY_AUDIT.md) e [INFRASTRUCTURE_PLAN.md](../INFRASTRUCTURE_PLAN.md). El procedimiento reproducible del primer despliegue está en [docs/operations/DEPLOYMENT.md](../docs/operations/DEPLOYMENT.md).
 
 ## Requisitos
 
@@ -52,6 +54,7 @@ Las variables no tienen valores secretos embebidos. La aplicación falla al inic
 | Variable | Desarrollo | Propósito |
 | --- | --- | --- |
 | `DB_URL` | `jdbc:postgresql://localhost:5432/equio` | URL JDBC |
+| `DB_MIGRATION_URL` | opcional | Si se omite, Flyway usa `DB_URL` |
 | `DB_APP_USERNAME` | `equio_app` | Rol CRUD usado por la API |
 | `DB_APP_PASSWORD` | obligatorio | Contraseña exclusiva del rol de aplicación |
 | `DB_MIGRATION_USERNAME` | obligatorio | Rol propietario usado solo por Flyway/DDL |
@@ -70,26 +73,27 @@ Las variables no tienen valores secretos embebidos. La aplicación falla al inic
 | `LOGIN_RATE_LIMIT_PER_MINUTE` | `10` | Límite adicional para inicio de sesión |
 | `ACCOUNT_LOCK_ATTEMPTS` | `5` | Fallos antes del bloqueo temporal |
 | `ACCOUNT_LOCK_MINUTES` | `15` | Duración del bloqueo |
-| `NVD_API_KEY` | vacío | Clave opcional/recomendada para OWASP Dependency-Check |
 
 Puedes ajustar el pool con `DB_POOL_MAX_SIZE` y `DB_POOL_MIN_IDLE`, BCrypt con `BCRYPT_STRENGTH` (10 a 14), y el dominio de cookie con `COOKIE_DOMAIN`.
 
 ### Producción
 
-Activa `SPRING_PROFILES_ACTIVE=prod`. Ese perfil exige HTTPS, cookies `Secure`, Swagger desactivado y procesa cabeceras reenviadas del proxy. Usa una URL PostgreSQL con validación completa del certificado, por ejemplo:
+Activa `SPRING_PROFILES_ACTIVE=prod`. Ese perfil exige HTTPS, cookies `Secure`, Swagger desactivado y procesa cabeceras reenviadas del proxy. Para el primer despliegue, Flyway y la API pueden compartir el endpoint directo de Neon. Deben conservar credenciales distintas: el propietario para Flyway y el rol limitado para la API. La URL exige validación completa del certificado, por ejemplo:
 
 ```text
 jdbc:postgresql://db.internal:5432/equio?sslmode=verify-full&sslrootcert=/run/secrets/postgres-ca.pem
 ```
 
-La cuenta de migraciones debe existir solo durante despliegues. La API en ejecución utiliza `equio_app`, sin permisos de superusuario, creación de roles o bases de datos.
+La API en ejecución utiliza `equio_app`, sin permisos de superusuario, creación de roles o bases de datos. Separar también los endpoints queda como una optimización futura, no como requisito del primer deploy.
+
+El [Dockerfile](Dockerfile) multi-stage genera una imagen sin toolchain y la ejecuta con un usuario no privilegiado. El único health check público es `/actuator/health/liveness`; el endpoint general de Actuator continúa autenticado. El manifiesto de Render está en [render.yaml](../render.yaml).
 
 ## Autenticación
 
 - El access token JWT dura 15 minutos por defecto e incluye `iss`, `aud`, `jti` y `type=access`.
 - El access token se devuelve en el cuerpo y el frontend lo conserva solo en memoria.
 - El refresh token es opaco, aleatorio y se almacena únicamente como SHA-256 en PostgreSQL.
-- La cookie de refresh es `HttpOnly`, `SameSite=Strict`, `Secure` en producción y tiene ruta `/api/v1/auth`.
+- La cookie de refresh es `HttpOnly`, `SameSite=Strict`, `Secure` en producción y tiene ruta `/api/v1/auth`. El frontend y la API deben usar subdominios del mismo dominio registrable.
 - Cada refresh rota el token. La reutilización de uno reemplazado revoca la familia activa.
 - Todas las operaciones mutantes de autenticación, incluido registro e inicio de sesión, requieren el encabezado CSRF.
 - Los intentos fallidos producen mensajes genéricos, rate limiting y bloqueo temporal.
@@ -112,15 +116,19 @@ No uses la cuenta `equio_app` para DDL. Para explorar datos durante desarrollo u
 ## Estructura
 
 - `users`: autenticación, perfil, bloqueo y sesiones refresh.
-- `transactions`: categorías, movimientos y resumen financiero.
+- `transactions`: categorías, movimientos y consultas financieras.
+- `dashboard`: composición de solo lectura entre movimientos y presupuestos.
 - `budgets`: presupuestos, subpresupuestos, historial y scheduler.
 - `savings`: metas y aportes/retiros.
-- `images`: proxy autenticado de Unsplash.
+- `images/controllers` y `images/services`: proxy autenticado de Unsplash.
 - `shared/config`: configuración y validaciones de entorno.
 - `shared/security`: JWT, CSRF, RLS, rate limiting y manejadores HTTP.
 - `shared/exceptions`: errores JSON seguros.
+- `shared/events`: contratos síncronos para efectos entre módulos.
 - `resources/db/migration`: esquema versionado.
 - `scripts`: configuración y pruebas de seguridad operativas.
+
+Las reglas de capas se ejecutan con ArchUnit en `ArchitectureRulesTest`. La organización, dependencias permitidas y deuda conocida se documentan en [Arquitectura](../docs/architecture/README.md).
 
 ## API
 
@@ -136,19 +144,11 @@ Salvo registro, login, refresh, logout y CSRF, todas las rutas requieren `Author
 
 ## Verificación
 
-Pruebas unitarias e integración:
+Pruebas unitarias, de contexto y de arquitectura:
 
 ```powershell
 .\mvnw.cmd test
 ```
-
-Análisis SCA de dependencias con umbral CVSS 7:
-
-```powershell
-.\mvnw.cmd verify -Psecurity-scan
-```
-
-La primera actualización de NVD puede tardar; configura `NVD_API_KEY` para evitar límites públicos. Los reportes se generan en `target/dependency-check-report.html` y `.json`.
 
 Comprobación del rol y aislamiento RLS:
 

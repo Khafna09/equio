@@ -1,4 +1,4 @@
-package com.equio.backend.transactions.dto.responses;
+package com.equio.backend.dashboard.dto.responses;
 
 import java.math.BigDecimal;
 import java.util.List;

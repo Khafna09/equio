@@ -1,7 +1,7 @@
-package com.equio.backend.transactions.controllers;
+package com.equio.backend.dashboard.controllers;
 
-import com.equio.backend.transactions.dto.responses.DashboardSummaryResponse;
-import com.equio.backend.transactions.services.DashboardService;
+import com.equio.backend.dashboard.dto.responses.DashboardSummaryResponse;
+import com.equio.backend.dashboard.services.DashboardService;
 import com.equio.backend.users.services.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;

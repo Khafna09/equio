@@ -2,8 +2,8 @@ package com.equio.backend.transactions.services;
 
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import com.equio.backend.shared.exceptions.ResultSetTooLargeException;
+import com.equio.backend.shared.events.ExpenseRecordedEvent;
 import com.equio.backend.shared.security.RlsContext;
-import com.equio.backend.budgets.services.BudgetService;
 import com.equio.backend.transactions.dto.requests.CreateMovementRequest;
 import com.equio.backend.transactions.dto.responses.MovementResponse;
 import com.equio.backend.transactions.entities.Category;
@@ -12,8 +12,8 @@ import com.equio.backend.transactions.entities.enums.MovementType;
 import com.equio.backend.transactions.repositories.CategoryRepository;
 import com.equio.backend.transactions.repositories.MovementRepository;
 import com.equio.backend.users.entities.User;
-import com.equio.backend.users.repositories.UserRepository;
-import org.springframework.context.annotation.Lazy;
+import com.equio.backend.users.services.UserLookupService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import java.util.ArrayList;
@@ -30,16 +30,16 @@ import java.util.Locale;
 public class CreateMovementServiceImpl implements CreateMovementService {
 
     private final MovementRepository movementRepository;
-    private final UserRepository userRepository;
+    private final UserLookupService userLookupService;
     private final CategoryRepository categoryRepository;
-    private final BudgetService budgetService;
+    private final ApplicationEventPublisher eventPublisher;
     private final RlsContext rlsContext;
     private final int maxQueryResults;
 
     public CreateMovementServiceImpl(MovementRepository movementRepository,
-                                     UserRepository userRepository,
+                                     UserLookupService userLookupService,
                                      CategoryRepository categoryRepository,
-                                     @Lazy BudgetService budgetService,
+                                     ApplicationEventPublisher eventPublisher,
                                      RlsContext rlsContext,
                                      @Value("${app.movements.max-query-results:5000}") int maxQueryResults) {
         if (maxQueryResults < 100 || maxQueryResults > 10_000) {
@@ -47,9 +47,9 @@ public class CreateMovementServiceImpl implements CreateMovementService {
                     "Movement query result limit must be between 100 and 10000");
         }
         this.movementRepository = movementRepository;
-        this.userRepository = userRepository;
+        this.userLookupService = userLookupService;
         this.categoryRepository = categoryRepository;
-        this.budgetService = budgetService;
+        this.eventPublisher = eventPublisher;
         this.rlsContext = rlsContext;
         this.maxQueryResults = maxQueryResults;
     }
@@ -58,8 +58,7 @@ public class CreateMovementServiceImpl implements CreateMovementService {
     @Transactional
     public MovementResponse createMovement(Long userId, CreateMovementRequest createMovementRequest) {
         rlsContext.setUserId(userId);
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User"));
+        User user = userLookupService.requireUser(userId);
 
         Movement movement = new Movement();
         movement.setAmount(createMovementRequest.amount());
@@ -77,7 +76,8 @@ public class CreateMovementServiceImpl implements CreateMovementService {
         Movement savedMovement = movementRepository.save(movement);
         if (savedMovement.getType() == MovementType.EXPENSE) {
             Long catId = savedMovement.getCategory() != null ? savedMovement.getCategory().getId() : null;
-            budgetService.addExpense(userId, catId, savedMovement.getAmount());
+            eventPublisher.publishEvent(new ExpenseRecordedEvent(
+                    userId, catId, savedMovement.getAmount()));
         }
 
         return toResponse(savedMovement);

@@ -8,7 +8,7 @@ import com.equio.backend.transactions.dto.responses.CategoryResponse;
 import com.equio.backend.transactions.entities.Category;
 import com.equio.backend.transactions.repositories.CategoryRepository;
 import com.equio.backend.users.entities.User;
-import com.equio.backend.users.repositories.UserRepository;
+import com.equio.backend.users.services.UserLookupService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,16 +18,16 @@ import java.util.List;
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
-    private final UserRepository userRepository;
+    private final UserLookupService userLookupService;
     private final RlsContext rlsContext;
 
     public CategoryServiceImpl(
             CategoryRepository categoryRepository,
-            UserRepository userRepository,
+            UserLookupService userLookupService,
             RlsContext rlsContext
     ) {
         this.categoryRepository = categoryRepository;
-        this.userRepository = userRepository;
+        this.userLookupService = userLookupService;
         this.rlsContext = rlsContext;
     }
 
@@ -35,8 +35,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     public CategoryResponse createCategory(Long userId, CategoryRequest request) {
         rlsContext.setUserId(userId);
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User"));
+        User user = userLookupService.requireUser(userId);
 
         String trimmedName = request.name() != null ? request.name().trim() : "";
         if (trimmedName.isEmpty()) {

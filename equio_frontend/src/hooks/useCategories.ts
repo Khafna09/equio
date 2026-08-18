@@ -3,6 +3,7 @@ import { categoriesApi } from '../api/categories.api';
 import type { CategoryRequest, CategoryResponse } from '../types/category.types';
 import { getApiErrorMessage } from '../utils/apiError';
 import { useI18n } from '../i18n/i18nContextValue';
+import { invalidateDomains, queryKeys, queryStaleTimes } from '../api/queryCache';
 
 export function useCategories() {
   const { t } = useI18n();
@@ -14,39 +15,30 @@ export function useCategories() {
     error,
     refetch
   } = useQuery<CategoryResponse[]>({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      return await categoriesApi.getAll();
-    }
+    queryKey: queryKeys.categories.root,
+    queryFn: categoriesApi.getAll,
+    staleTime: queryStaleTimes.reference,
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: CategoryRequest) => {
       return await categoriesApi.create(data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-    }
+    onSuccess: () => invalidateDomains(queryClient, ['categories']),
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: CategoryRequest }) => {
       return await categoriesApi.update(id, data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-      queryClient.invalidateQueries({ queryKey: ['budgets'] });
-    }
+    onSuccess: () => invalidateDomains(queryClient, ['categories', 'budgets']),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       return await categoriesApi.delete(id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-      queryClient.invalidateQueries({ queryKey: ['budgets'] });
-    }
+    onSuccess: () => invalidateDomains(queryClient, ['categories', 'budgets']),
   });
 
   return {

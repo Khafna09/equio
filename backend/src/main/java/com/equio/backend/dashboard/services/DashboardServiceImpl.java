@@ -1,14 +1,10 @@
-package com.equio.backend.transactions.services;
+package com.equio.backend.dashboard.services;
 
 import com.equio.backend.shared.security.RlsContext;
-import com.equio.backend.transactions.dto.responses.DashboardSummaryResponse;
-import com.equio.backend.transactions.entities.Category;
+import com.equio.backend.dashboard.dto.responses.DashboardSummaryResponse;
 import com.equio.backend.transactions.entities.enums.MovementType;
-import com.equio.backend.transactions.repositories.MovementRepository;
-import com.equio.backend.budgets.repositories.BudgetRepository;
-import com.equio.backend.budgets.entities.Budget;
-import com.equio.backend.budgets.entities.enums.SavingsType;
-import org.springframework.data.domain.Pageable;
+import com.equio.backend.transactions.services.MovementQueryService;
+import com.equio.backend.budgets.services.BudgetLookupService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,17 +19,17 @@ import java.util.List;
 @Service
 public class DashboardServiceImpl implements DashboardService {
 
-    private final MovementRepository movementRepository;
-    private final BudgetRepository budgetRepository;
+    private final MovementQueryService movementQueryService;
+    private final BudgetLookupService budgetLookupService;
     private final RlsContext rlsContext;
 
     public DashboardServiceImpl(
-            MovementRepository movementRepository,
-            BudgetRepository budgetRepository,
+            MovementQueryService movementQueryService,
+            BudgetLookupService budgetLookupService,
             RlsContext rlsContext
     ) {
-        this.movementRepository = movementRepository;
-        this.budgetRepository = budgetRepository;
+        this.movementQueryService = movementQueryService;
+        this.budgetLookupService = budgetLookupService;
         this.rlsContext = rlsContext;
     }
 
@@ -49,37 +45,23 @@ public class DashboardServiceImpl implements DashboardService {
         LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
 
 
-        BigDecimal totalIncome = movementRepository.sumAmountByUserIdAndTypeAndDateBetween(
+        BigDecimal totalIncome = movementQueryService.sumByType(
                 userId, MovementType.INCOME, startDateTime, endDateTime);
-        BigDecimal totalExpense = movementRepository.sumAmountByUserIdAndTypeAndDateBetween(
+        BigDecimal totalExpense = movementQueryService.sumByType(
                 userId, MovementType.EXPENSE, startDateTime, endDateTime);
 
 
         if (totalIncome == null) totalIncome = BigDecimal.ZERO;
         if (totalExpense == null) totalExpense = BigDecimal.ZERO;
 
-        List<Budget> globalBudgets = budgetRepository.findByUserId(userId).stream()
-                .filter(b -> b.getCategory() == null)
-                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
-                .toList();
-
         BigDecimal balance;
         BigDecimal globalBudgetAmount = null;
         BigDecimal savingsDeduction = null;
 
-        if (!globalBudgets.isEmpty()) {
-            Budget currentGlobalBudget = globalBudgets.get(0);
-            globalBudgetAmount = currentGlobalBudget.getTotalAmount();
-            savingsDeduction = BigDecimal.ZERO;
-
-            if (currentGlobalBudget.getSavingsType() != null && currentGlobalBudget.getSavingsValue() != null) {
-                if (currentGlobalBudget.getSavingsType() == SavingsType.PERCENTAGE) {
-                    savingsDeduction = globalBudgetAmount.multiply(currentGlobalBudget.getSavingsValue())
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                } else if (currentGlobalBudget.getSavingsType() == SavingsType.FIXED) {
-                    savingsDeduction = currentGlobalBudget.getSavingsValue();
-                }
-            }
+        var currentGlobalBudget = budgetLookupService.findLatestGlobal(userId).orElse(null);
+        if (currentGlobalBudget != null) {
+            globalBudgetAmount = currentGlobalBudget.totalAmount();
+            savingsDeduction = currentGlobalBudget.savingsDeduction();
 
             // Balance = Presupuesto Global + Ingresos Extra - Ahorro - Gastos
             balance = globalBudgetAmount.add(totalIncome).subtract(savingsDeduction).subtract(totalExpense);
@@ -87,13 +69,12 @@ public class DashboardServiceImpl implements DashboardService {
             balance = totalIncome.subtract(totalExpense);
         }
 
-        List<Object[]> categoryRows = movementRepository.findExpenseCategoriesByUserIdAndDateBetween(
-                userId, startDateTime, endDateTime, Pageable.unpaged());
+        var categoryRows = movementQueryService.findExpenseCategoriesByPeriod(
+                userId, startDateTime, endDateTime);
 
         List<DashboardSummaryResponse.CategorySummary> expenseCategories = new ArrayList<>();
-        for (Object[] row : categoryRows) {
-            Category cat = (Category) row[0];
-            BigDecimal catTotal = (BigDecimal) row[1];
+        for (var row : categoryRows) {
+            BigDecimal catTotal = row.totalSpent();
 
             double percentage = 0.0;
             if (totalExpense.compareTo(BigDecimal.ZERO) > 0) {
@@ -103,9 +84,9 @@ public class DashboardServiceImpl implements DashboardService {
             }
 
             expenseCategories.add(new DashboardSummaryResponse.CategorySummary(
-                    cat != null ? cat.getName() : null,
-                    cat != null ? cat.getColor() : null,
-                    cat != null ? cat.getIcon() : null,
+                    row.categoryName(),
+                    row.categoryColor(),
+                    row.categoryIcon(),
                     catTotal,
                     percentage
             ));

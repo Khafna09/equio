@@ -28,14 +28,23 @@ type RetryableConfig = InternalAxiosRequestConfig & {
 
 let refreshPromise: Promise<AuthResponse> | null = null;
 let restorePromise: Promise<AuthResponse | null> | null = null;
+let csrfToken: string | null = null;
 
 async function ensureCsrfToken(): Promise<void> {
-  await sessionClient.get('/auth/csrf');
+  const response = await sessionClient.get<{ token: string }>('/auth/csrf');
+  if (!response.data.token) {
+    throw new Error('The CSRF endpoint did not return a token');
+  }
+  csrfToken = response.data.token;
 }
 
 async function requestRefresh(): Promise<AuthResponse> {
   await ensureCsrfToken();
-  const response = await sessionClient.post<AuthResponse>('/auth/refresh');
+  const response = await sessionClient.post<AuthResponse>(
+    '/auth/refresh',
+    undefined,
+    { headers: { 'X-XSRF-TOKEN': csrfToken } },
+  );
   setAccessToken(response.data.accessToken);
   return response.data;
 }
@@ -62,9 +71,14 @@ export function restoreSession(): Promise<AuthResponse | null> {
 export async function closeSession(): Promise<void> {
   try {
     await ensureCsrfToken();
-    await sessionClient.post('/auth/logout');
+    await sessionClient.post(
+      '/auth/logout',
+      undefined,
+      { headers: { 'X-XSRF-TOKEN': csrfToken } },
+    );
   } finally {
     clearAccessToken();
+    csrfToken = null;
     restorePromise = null;
   }
 }
@@ -77,6 +91,9 @@ apiClient.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (csrfToken) {
+    config.headers['X-XSRF-TOKEN'] = csrfToken;
   }
   return config;
 });

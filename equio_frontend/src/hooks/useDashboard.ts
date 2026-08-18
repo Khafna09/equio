@@ -3,6 +3,7 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { dashboardApi } from '../api/dashboard.api';
 import type { DashboardSummaryResponse } from '../types/dashboard.types';
 import { useI18n } from '../i18n/i18nContextValue';
+import { queryKeys, queryStaleTimes } from '../api/queryCache';
 
 export function useDashboard(month?: number, year?: number) {
   const { t } = useI18n();
@@ -12,10 +13,9 @@ export function useDashboard(month?: number, year?: number) {
     error,
     refetch
   } = useQuery<DashboardSummaryResponse>({
-    queryKey: ['dashboard', month, year],
-    queryFn: async () => {
-      return await dashboardApi.getSummary(month, year);
-    }
+    queryKey: queryKeys.dashboard.summary(month, year),
+    queryFn: () => dashboardApi.getSummary(month, year),
+    staleTime: queryStaleTimes.financial,
   });
 
   return {

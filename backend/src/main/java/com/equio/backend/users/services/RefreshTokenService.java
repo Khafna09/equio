@@ -1,6 +1,7 @@
 package com.equio.backend.users.services;
 
 import com.equio.backend.shared.exceptions.UnauthorizedException;
+import com.equio.backend.shared.jobs.DatabaseJobLock;
 import com.equio.backend.shared.security.RequestMetadata;
 import com.equio.backend.shared.security.SensitiveDataHasher;
 import com.equio.backend.users.entities.*;
@@ -17,14 +18,17 @@ import java.util.*;
 
 @Service
 public class RefreshTokenService {
+    private static final long CLEANUP_JOB_LOCK_ID = 1_002L;
     private final RefreshTokenSessionRepository repository;
     private final SecureRandom secureRandom = new SecureRandom();
     private final Duration lifetime;
     private final SensitiveDataHasher metadataHasher;
+    private final DatabaseJobLock jobLock;
 
     public RefreshTokenService(
             RefreshTokenSessionRepository repository,
             SensitiveDataHasher metadataHasher,
+            DatabaseJobLock jobLock,
             @Value("${app.refresh-token.expiration-days}") long expirationDays
     ) {
         if (expirationDays < 1 || expirationDays > 90) {
@@ -32,6 +36,7 @@ public class RefreshTokenService {
         }
         this.repository = repository;
         this.metadataHasher = metadataHasher;
+        this.jobLock = jobLock;
         this.lifetime = Duration.ofDays(expirationDays);
     }
 
@@ -83,7 +88,9 @@ public class RefreshTokenService {
     @Scheduled(cron = "0 30 3 * * *")
     @Transactional
     void deleteExpiredSessions() {
-        repository.deleteExpiredBefore(Instant.now().minus(Duration.ofDays(7)));
+        if (jobLock.tryAcquire(CLEANUP_JOB_LOCK_ID)) {
+            repository.deleteExpiredBefore(Instant.now().minus(Duration.ofDays(7)));
+        }
     }
 
     private IssuedRefreshToken create(User user, RequestMetadata metadata) {
