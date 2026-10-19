@@ -86,6 +86,25 @@ function collectLeaves(object, prefix = "", output = new Set()) {
   return output;
 }
 
+function collectLeafValues(object, prefix = "", output = new Map()) {
+  for (const property of object.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = propertyName(property);
+    const key = prefix ? `${prefix}.${name}` : name;
+    const value = unwrap(property.initializer);
+    if (ts.isObjectLiteralExpression(value)) {
+      collectLeafValues(value, key, output);
+    } else if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
+      output.set(key, value.text);
+    }
+  }
+  return output;
+}
+
+function interpolationTokens(value) {
+  return [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+}
+
 function sourceFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(directory, entry.name);
@@ -95,9 +114,69 @@ function sourceFiles(directory) {
 }
 
 const root = findTranslationsObject();
-const spanish = collectLeaves(objectProperty(root, "es"));
-const english = collectLeaves(objectProperty(root, "en"));
+const spanishObject = objectProperty(root, "es");
+const englishObject = objectProperty(root, "en");
+const spanish = collectLeaves(spanishObject);
+const english = collectLeaves(englishObject);
+const spanishValues = collectLeafValues(spanishObject);
+const englishValues = collectLeafValues(englishObject);
 const errors = [];
+const userFacingAttributes = new Set([
+  "alt",
+  "aria-label",
+  "description",
+  "label",
+  "placeholder",
+  "title",
+]);
+const invariantUiText = new Set([
+  "Equio", "E", "AM", "PM", "HH", "MM", "PDF", "S/", "&rarr;",
+  "PEN", "USD", "EUR", "MXN", "COP", "CLP",
+]);
+
+function normalizedUiText(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function isTranslatableUiText(value) {
+  const normalized = normalizedUiText(value);
+  return normalized.length > 0
+    && /\p{L}/u.test(normalized)
+    && !invariantUiText.has(normalized);
+}
+
+function staticExpressionValues(expression) {
+  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+    return [expression.text];
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return [
+      ...staticExpressionValues(expression.whenTrue),
+      ...staticExpressionValues(expression.whenFalse),
+    ];
+  }
+  return [];
+}
+
+function staticAttributeValues(attribute) {
+  if (!attribute.initializer) return [];
+  if (ts.isStringLiteral(attribute.initializer)) return [attribute.initializer.text];
+  if (!ts.isJsxExpression(attribute.initializer) || !attribute.initializer.expression) return [];
+  return staticExpressionValues(attribute.initializer.expression);
+}
+
+function isInsideStyleElement(node) {
+  let current = node.parent;
+  while (current) {
+    if (ts.isJsxElement(current)
+        && ts.isIdentifier(current.openingElement.tagName)
+        && current.openingElement.tagName.text === "style") {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
 
 for (const key of spanish) {
   if (!english.has(key)) errors.push(`Missing in en: ${key}`);
@@ -105,10 +184,21 @@ for (const key of spanish) {
 for (const key of english) {
   if (!spanish.has(key)) errors.push(`Missing in es: ${key}`);
 }
+for (const key of spanish) {
+  if (!englishValues.has(key)) continue;
+  const esTokens = interpolationTokens(spanishValues.get(key) ?? "");
+  const enTokens = interpolationTokens(englishValues.get(key) ?? "");
+  if (esTokens.join("|") !== enTokens.join("|")) {
+    errors.push(`Interpolation tokens differ for ${key}: es=[${esTokens}] en=[${enTokens}]`);
+  }
+}
 
 for (const file of sourceFiles(path.join(projectRoot, "src"))) {
   if (file === translationsPath) continue;
   const text = fs.readFileSync(file, "utf8");
+  if (/\uFFFD|Ã.|Â.|â€|ðŸ/u.test(text)) {
+    errors.push(`${path.relative(projectRoot, file)} contains likely corrupted UTF-8 text`);
+  }
   const kind = file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const fileSource = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
   function visit(node) {
@@ -123,6 +213,26 @@ for (const file of sourceFiles(path.join(projectRoot, "src"))) {
       if (!spanish.has(key) || !english.has(key)) {
         const position = fileSource.getLineAndCharacterOfPosition(node.getStart(fileSource));
         errors.push(`${path.relative(projectRoot, file)}:${position.line + 1} unknown key: ${key}`);
+      }
+    }
+    if (ts.isJsxText(node) && isTranslatableUiText(node.text)) {
+      const position = fileSource.getLineAndCharacterOfPosition(node.getStart(fileSource));
+      errors.push(`${path.relative(projectRoot, file)}:${position.line + 1} hardcoded JSX text: ${normalizedUiText(node.text)}`);
+    }
+    if (ts.isJsxExpression(node) && !ts.isJsxAttribute(node.parent)
+        && !isInsideStyleElement(node) && node.expression) {
+      for (const value of staticExpressionValues(node.expression)) {
+        if (!isTranslatableUiText(value)) continue;
+        const position = fileSource.getLineAndCharacterOfPosition(node.getStart(fileSource));
+        errors.push(`${path.relative(projectRoot, file)}:${position.line + 1} hardcoded JSX expression: ${normalizedUiText(value)}`);
+      }
+    }
+    if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)
+        && userFacingAttributes.has(node.name.text)) {
+      for (const value of staticAttributeValues(node)) {
+        if (!isTranslatableUiText(value)) continue;
+        const position = fileSource.getLineAndCharacterOfPosition(node.getStart(fileSource));
+        errors.push(`${path.relative(projectRoot, file)}:${position.line + 1} hardcoded ${node.name.text}: ${normalizedUiText(value)}`);
       }
     }
     ts.forEachChild(node, visit);

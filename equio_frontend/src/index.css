@@ -53,12 +53,12 @@
   --color-neutral-100: #F4F4F6;
   --color-neutral-200: #E6E6EA;
   --color-neutral-300: #D1D1D8;
-  --color-neutral-400: #9CA3AF;
-  --color-neutral-500: #6B7280;
-  --color-neutral-600: #4B5563;
-  --color-neutral-700: #374151;
-  --color-neutral-800: #1F2937;
-  --color-neutral-900: #2B2230;
+  --color-neutral-400: #A1A1AA;
+  --color-neutral-500: #73737E;
+  --color-neutral-600: #555560;
+  --color-neutral-700: #3A3A44;
+  --color-neutral-800: #24242B;
+  --color-neutral-900: #151419;
 
   /* Shadcn UI compatibility aliases */
   --color-primary: hsl(var(--primary));
@@ -86,6 +86,7 @@
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: 250 30% 98%;
     --foreground: 260 25% 15%;
     --card: 0 0% 100%;
@@ -109,25 +110,26 @@
   }
 
   .dark {
-    --background: 240 20% 7%;
+    color-scheme: dark;
+    --background: 250 14% 7%;
     --foreground: 250 20% 96%;
-    --card: 240 18% 12%;
+    --card: 250 10% 12%;
     --card-foreground: 250 20% 96%;
-    --popover: 240 18% 12%;
+    --popover: 250 10% 12%;
     --popover-foreground: 250 20% 96%;
-    --primary: 263 90% 73%;
-    --primary-foreground: 240 20% 7%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 41 86% 62%;
-    --secondary-foreground: 240 20% 7%;
-    --muted: 240 15% 18%;
-    --muted-foreground: 240 10% 65%;
-    --accent: 240 15% 18%;
+    --secondary-foreground: 250 14% 7%;
+    --muted: 250 8% 18%;
+    --muted-foreground: 250 8% 68%;
+    --accent: 250 8% 18%;
     --accent-foreground: 250 20% 96%;
     --destructive: 343 88% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 15% 20%;
-    --input: 240 15% 20%;
-    --ring: 263 90% 73%;
+    --border: 250 8% 22%;
+    --input: 250 8% 22%;
+    --ring: 262 83% 62%;
   }
 }
 
@@ -138,16 +140,10 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    background-image: radial-gradient(at 0% 0%, hsla(263, 90%, 96%, 0.5) 0px, transparent 50%),
-                      radial-gradient(at 100% 100%, hsla(240, 20%, 96%, 0.5) 0px, transparent 50%);
     background-attachment: fixed;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     transition: background-color 0.3s ease, color 0.3s ease;
-  }
-  .dark body {
-    background-image: radial-gradient(at 0% 0%, hsla(263, 90%, 20%, 0.25) 0px, transparent 50%),
-                      radial-gradient(at 100% 100%, hsla(240, 20%, 4%, 0.8) 0px, transparent 50%);
   }
 }
 
@@ -178,4 +174,10 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #45424d;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #5f5b69;
 }

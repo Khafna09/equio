@@ -15,9 +15,16 @@ const globalBudget = (overrides: Partial<BudgetResponse> = {}): BudgetResponse =
   categoryColor: null,
   categoryIcon: null,
   parentBudgetId: null,
+  scope: 'GLOBAL',
   status: 'ACTIVE',
   savingsType: 'PERCENTAGE',
   savingsValue: 10,
+  assignableAmount: 900,
+  allocatedAmount: 0,
+  unallocatedAmount: 900,
+  canLink: false,
+  canDetach: false,
+  canClose: true,
   isOverBudget: false,
   createdAt: '2026-08-01T00:00:00',
   ...overrides,
@@ -28,9 +35,25 @@ const categoryBudget = (id: number, totalAmount: number): BudgetResponse => ({
   categoryId: id,
   categoryName: `Category ${id}`,
   parentBudgetId: 1,
+  scope: 'LINKED_CATEGORY',
 });
 
 describe('calculateBudgetMetrics', () => {
+  it('shows a fully consumed allowance when all funds are reserved and expenses exist', () => {
+    expect(calculateBudgetMetrics(globalBudget({ savingsValue: 100 }), []).globalProgress).toBe(100);
+    expect(calculateBudgetMetrics(globalBudget({ savingsValue: 100, spentAmount: 0 }), []).globalProgress).toBe(0);
+  });
+
+  it('excludes closed children and budgets outside the current general budget', () => {
+    const metrics = calculateBudgetMetrics(globalBudget(), [
+      categoryBudget(2, 100),
+      { ...categoryBudget(3, 200), status: 'CLOSED' },
+      { ...categoryBudget(4, 300), parentBudgetId: 99 },
+      { ...categoryBudget(5, 400), parentBudgetId: null },
+    ]);
+    expect(metrics.assignableSubBudgetsCapacity).toBe(800);
+  });
+
   it('deducts savings and existing sub-budget assignments', () => {
     const metrics = calculateBudgetMetrics(
       globalBudget(),

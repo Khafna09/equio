@@ -43,7 +43,7 @@ export function CategorySelector({ categories, isLoading, selectedCategoryId, on
                   </div>
                 )}
                 <span className="text-lg mb-0.5">{cat.icon || t('common.folderIcon')}</span>
-                <span className="text-[11px] font-semibold truncate max-w-full text-center leading-tight">{cat.name}</span>
+                <span className="text-[11px] font-semibold truncate max-w-full text-center leading-tight dark:text-neutral-100">{cat.name}</span>
               </button>
             );
           })

@@ -75,7 +75,7 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
       await updateGoal(goal.id, { ...updatedData, imageUrl });
       onClose();
     } catch (error: unknown) {
-      setSubmitError(getApiErrorMessage(error, t('savings.updateError')));
+      setSubmitError(getApiErrorMessage(error, t('savings.updateError'), t));
     } finally {
       setIsSubmitting(false);
     }
@@ -91,7 +91,7 @@ function EditGoalModalContent({ isOpen, onClose, goal, triggerRect }: EditGoalMo
       await deleteGoal(goal.id);
       onClose();
     } catch (error: unknown) {
-      setSubmitError(getApiErrorMessage(error, t('savings.deleteError')));
+      setSubmitError(getApiErrorMessage(error, t('savings.deleteError'), t));
     } finally {
       setIsDeleting(false);
     }

@@ -4,11 +4,14 @@ import { profileApi, type ProfileRequest, type ProfileResponse } from '../api/pr
 import { useAuth } from '../contexts/authContextValue';
 import { useEffect } from 'react';
 import { useI18n } from '../i18n/i18nContextValue';
-import { queryKeys, queryStaleTimes } from '../api/queryCache';
+import { privateQueryKey, queryKeys, queryStaleTimes } from '../api/queryCache';
+import { getSessionVersion } from '../api/tokenStore';
+import { CanceledError } from 'axios';
 
 export function useProfile() {
   const queryClient = useQueryClient();
   const { user, updateUser } = useAuth();
+  const profileKey = privateQueryKey(user?.id, queryKeys.profile.root);
   const { language, setLanguage, t } = useI18n();
 
   const {
@@ -17,7 +20,8 @@ export function useProfile() {
     error,
     refetch
   } = useQuery<ProfileResponse>({
-    queryKey: queryKeys.profile.root,
+    queryKey: profileKey,
+    enabled: Boolean(user),
     queryFn: profileApi.getMyProfile,
     staleTime: queryStaleTimes.profile,
   });
@@ -47,19 +51,23 @@ export function useProfile() {
   }, [language, profile, setLanguage, updateUser, user?.firstName, user?.language, user?.lastName]);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: ProfileRequest) => {
-      return await profileApi.updateMyProfile(data);
+    mutationFn: async ({ data, sessionVersion }: { data: ProfileRequest; sessionVersion: number }) => {
+      if (sessionVersion !== getSessionVersion()) throw new CanceledError('Session changed');
+      const profile = await profileApi.updateMyProfile(data);
+      return { profile, sessionVersion };
     },
-    onMutate: async (data) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.profile.root });
-      queryClient.setQueryData<ProfileResponse>(queryKeys.profile.root, (current) =>
+    onMutate: async ({ data, sessionVersion }) => {
+      await queryClient.cancelQueries({ queryKey: profileKey });
+      if (sessionVersion !== getSessionVersion()) throw new CanceledError('Session changed');
+      queryClient.setQueryData<ProfileResponse>(profileKey, (current) =>
         current ? { ...current, ...data } : current
       );
     },
-    onSuccess: (updatedProfile, data) => {
-      const current = queryClient.getQueryData<ProfileResponse>(queryKeys.profile.root);
+    onSuccess: ({ profile: updatedProfile, sessionVersion }, { data }) => {
+      if (sessionVersion !== getSessionVersion()) return;
+      const current = queryClient.getQueryData<ProfileResponse>(profileKey);
       const mergedProfile = { ...updatedProfile, ...current, ...data };
-      queryClient.setQueryData(queryKeys.profile.root, mergedProfile);
+      queryClient.setQueryData(profileKey, mergedProfile);
       document.documentElement.classList.toggle('dark', mergedProfile.theme === 'dark');
 
       const profileLanguage = mergedProfile.language === 'en' ? 'en' : 'es';
@@ -71,16 +79,16 @@ export function useProfile() {
       setLanguage(profileLanguage);
     },
     onError: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.profile.root });
+      queryClient.invalidateQueries({ queryKey: profileKey });
     }
   });
 
   return {
     profile,
     isLoading,
-    error: error ? getApiErrorMessage(error, t('common.loadProfileError')) : null,
+    error: error ? getApiErrorMessage(error, t('common.loadProfileError'), t) : null,
     refetch,
-    updateProfile: updateMutation.mutateAsync,
+    updateProfile: async (data: ProfileRequest) => (await updateMutation.mutateAsync({ data, sessionVersion: getSessionVersion() })).profile,
     isUpdating: updateMutation.isPending
   };
 }

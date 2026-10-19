@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { enUS, es } from 'date-fns/locale';
 import { EChart } from '../../components/charts/EChart';
@@ -13,6 +14,7 @@ import {
   PiggyBank,
   ReceiptText,
   Rows3,
+  RotateCw,
   Target,
   Trash2,
   TrendingDown,
@@ -23,6 +25,8 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { budgetsApi } from '../../api/budgets.api';
+import { privateQueryKey, queryKeys, queryStaleTimes } from '../../api/queryCache';
+import { useAuth } from '../../contexts/authContextValue';
 import { useBudgets } from '../../hooks/useBudgets';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
@@ -61,22 +65,30 @@ function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 export function BudgetHistoryList() {
-  const { historyBudgets: rawHistory, isHistoryLoading, deleteBudget } = useBudgets();
+  const { historyBudgets: rawHistory, isHistoryLoading, historyError, refetchHistory, deleteBudget } = useBudgets();
   const { formatCurrency } = useCurrency();
   const { t, language } = useI18n();
+  const { user } = useAuth();
   const { formatTime } = useTimeFormat();
   const locale = language === 'es' ? es : enUS;
-  const [selectedBudget, setSelectedBudget] = useState<BudgetResponse | null>(null);
-  const [report, setReport] = useState<BudgetHistoryReport | null>(null);
-  const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [selection, setSelection] = useState<{ userId: number; budgetId: number } | null>(null);
+  const selectedBudget = selection?.userId === user?.id
+    ? rawHistory.find((budget) => budget.id === selection?.budgetId) ?? null : null;
+  const { data: report = null, isLoading: isLoadingReport, error: reportError, refetch: refetchReport } = useQuery({
+    queryKey: privateQueryKey(user?.id, queryKeys.budgets.report(selectedBudget?.id ?? null)),
+    queryFn: ({ signal }) => budgetsApi.getHistoryReport(selectedBudget!.id, signal),
+    enabled: Boolean(user && selectedBudget), staleTime: queryStaleTimes.financial,
+  });
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isMovementsOpen, setIsMovementsOpen] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [operationError, setActionError] = useState<string | null>(null);
+  const actionError = operationError ?? (reportError
+    ? getApiErrorMessage(reportError, t('budgets.historyReportError'), t) : null);
 
   const historyBudgets = rawHistory
-    .filter((budget) => !budget.parentBudgetId && budget.categoryId == null)
+    .filter((budget) => !budget.parentBudgetId)
     .sort((a, b) => new Date(b.endDate || b.createdAt).getTime() - new Date(a.endDate || a.createdAt).getTime());
 
   const formatDate = (value?: string) => {
@@ -101,18 +113,10 @@ export function BudgetHistoryList() {
       .format(new Date(2024, 0, day));
   };
 
-  const openReport = async (budget: BudgetResponse) => {
-    setSelectedBudget(budget);
-    setReport(null);
+  const openReport = (budget: BudgetResponse) => {
+    if (!user) return;
+    setSelection({ userId: user.id, budgetId: budget.id });
     setActionError(null);
-    setIsLoadingReport(true);
-    try {
-      setReport(await budgetsApi.getHistoryReport(budget.id));
-    } catch (error) {
-      setActionError(getApiErrorMessage(error, t('budgets.historyReportError')));
-    } finally {
-      setIsLoadingReport(false);
-    }
   };
 
   const handleDownload = async () => {
@@ -130,7 +134,7 @@ export function BudgetHistoryList() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setActionError(await getApiErrorMessageAsync(error, t('budgets.historyPdfError')));
+      setActionError(await getApiErrorMessageAsync(error, t('budgets.historyPdfError'), t));
     } finally {
       setIsDownloading(false);
     }
@@ -143,11 +147,10 @@ export function BudgetHistoryList() {
     try {
       await deleteBudget({ id: selectedBudget.id, cascade: true });
       setIsDeleteOpen(false);
-      setSelectedBudget(null);
-      setReport(null);
+      setSelection(null);
       setIsMovementsOpen(false);
     } catch (error) {
-      setActionError(getApiErrorMessage(error, t('budgets.historyDeleteError')));
+      setActionError(getApiErrorMessage(error, t('budgets.historyDeleteError'), t));
       setIsDeleteOpen(false);
     } finally {
       setIsDeleting(false);
@@ -167,13 +170,18 @@ export function BudgetHistoryList() {
       <div className="space-y-8">
         <div className="flex flex-col gap-4 border-b border-neutral-200 pb-5 dark:border-neutral-700 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => { setSelectedBudget(null); setReport(null); setActionError(null); setIsMovementsOpen(false); }} aria-label={t('budgets.backToHistory')}>
+            <Button variant="ghost" size="icon" onClick={() => { setSelection(null); setActionError(null); setIsMovementsOpen(false); }} aria-label={t('budgets.backToHistory')}>
               <ArrowLeft />
             </Button>
             <div className="min-w-0">
               <h2 className="truncate text-xl font-bold text-neutral-950 dark:text-white">{t('budgets.historyDetailTitle')}</h2>
               <p className="text-sm text-neutral-500 dark:text-neutral-400">
                 {formatDate(selectedBudget.startDate)} - {formatDate(selectedBudget.endDate)}
+              </p>
+              <p className="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">
+                {selectedBudget.scope === 'GLOBAL'
+                  ? t('budgets.globalBudget')
+                  : t('budgets.independentHistoryLabel', { category: selectedBudget.categoryName ?? t('common.category') })}
               </p>
             </div>
           </div>
@@ -191,8 +199,9 @@ export function BudgetHistoryList() {
         </div>
 
         {actionError ? (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+          <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
             {actionError}
+            {reportError && <Button variant="ghost" onClick={() => void refetchReport()} icon={<RotateCw />}>{t('common.retry')}</Button>}
           </div>
         ) : null}
 
@@ -237,6 +246,15 @@ export function BudgetHistoryList() {
     );
   }
 
+  if (historyError) {
+    return (
+      <div role="alert" className="flex items-center gap-3 text-red-600 dark:text-red-400">
+        <span>{historyError}</span>
+        <Button variant="secondary" onClick={() => refetchHistory()}>{t('common.retry')}</Button>
+      </div>
+    );
+  }
+
   if (historyBudgets.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 py-16 text-center dark:border-neutral-700 dark:bg-neutral-900/50">
@@ -263,7 +281,9 @@ export function BudgetHistoryList() {
               <CalendarDays className="h-4 w-4" />
             </span>
             <span className="min-w-0">
-              <span className="block text-sm font-semibold text-neutral-900 dark:text-white">{formatDate(budget.startDate)}</span>
+              <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-white">
+                {budget.scope === 'GLOBAL' ? t('budgets.globalBudget') : (budget.categoryName || t('common.category'))}
+              </span>
               <span className="block text-xs text-neutral-500 dark:text-neutral-400">{t('common.to')} {formatDate(budget.endDate)}</span>
             </span>
           </span>

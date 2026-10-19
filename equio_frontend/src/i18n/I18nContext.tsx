@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { translations, type AppLanguage } from './translations';
 import { I18nContext, type I18nContextValue } from './i18nContextValue';
 import { getLocalStorageItem, setLocalStorageItem } from '../utils/browserStorage';
+import { useAuth } from '../contexts/authContextValue';
 
 type TranslationLeaf = string;
 
@@ -36,25 +37,28 @@ function interpolate(template: string, params?: Record<string, string | number>)
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<AppLanguage>(() => {
-    if (typeof window === 'undefined') {
-      return 'es';
-    }
-
+  const { user } = useAuth();
+  const accountKey = `${user?.id ?? 'guest'}:${user?.language ?? ''}`;
+  const [selection, setSelection] = useState(() => {
     const stored = getLocalStorageItem('equio_language');
-    if (stored === 'es' || stored === 'en') {
-      return stored;
-    }
-
-    return getBrowserLanguage();
+    const language: AppLanguage = user?.language === 'es' || user?.language === 'en'
+      ? user.language : stored === 'es' || stored === 'en' ? stored : getBrowserLanguage();
+    return { accountKey, language };
   });
+  let { language } = selection;
 
-  const setLanguage = (nextLanguage: AppLanguage) => {
-    setLanguageState(nextLanguage);
-    setLocalStorageItem('equio_language', nextLanguage);
-  };
+  // Reset the preference with the account, before rendering another account's views.
+  if (selection.accountKey !== accountKey) {
+    language = user?.language === 'es' || user?.language === 'en' ? user.language : selection.language;
+    setSelection({ accountKey, language });
+  }
+
+  const setLanguage = useCallback((nextLanguage: AppLanguage) => {
+    setSelection({ accountKey, language: nextLanguage });
+  }, [accountKey]);
 
   useEffect(() => {
+    setLocalStorageItem('equio_language', language);
     document.documentElement.lang = language;
   }, [language]);
 
@@ -65,7 +69,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       const current = resolveTranslation(language, key) ?? resolveTranslation('es', key) ?? key;
       return interpolate(current, params);
     },
-  }), [language]);
+  }), [language, setLanguage]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

@@ -1,11 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
-import { useMovements } from '../../hooks/useMovements';
+import { useMovementPages } from '../../hooks/useMovementPages';
 import { useCategories } from '../../hooks/useCategories';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { TrendingDown, TrendingUp, Calendar as CalendarIcon, X, GripVertical } from 'lucide-react';
+import { TrendingDown, TrendingUp, Calendar as CalendarIcon, X, GripVertical, ChevronDown, RotateCw } from 'lucide-react';
+import { Button } from '../../components/ui/Button';
 import { EditMovementModal } from '../movements/EditMovementModal';
 import { format, isToday, isYesterday, parseISO, isValid } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
@@ -18,7 +19,7 @@ import { useSharedElementModal } from '../../hooks/useSharedElementModal';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useTimeFormat } from '../../hooks/useTimeFormat';
 import { useI18n } from '../../i18n/i18nContextValue';
-import type { MovementResponse } from '../../types/movement.types';
+import type { MovementFilters, MovementResponse } from '../../types/movement.types';
 import { HistoryCalendar } from './HistoryCalendar';
 
 type MainMovementFilter = 'ALL' | 'INCOME' | 'EXPENSE';
@@ -155,14 +156,14 @@ function getMovementDisplayInfo(
 
 
 function MovementList({
-  movements,
+  filters,
   title,
   headerContent,
   onClose,
   isRemovable,
   onMovementClick
 }: {
-  movements: MovementResponse[];
+  filters: MovementFilters;
   title?: string;
   headerContent?: React.ReactNode;
   onClose?: () => void;
@@ -172,6 +173,7 @@ function MovementList({
   const { formatCurrency } = useCurrency();
   const { formatTime } = useTimeFormat();
   const { t, language } = useI18n();
+  const { movements, isLoading, error, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useMovementPages(filters);
 
   const groupedMovements = useMemo(() => {
     return movements.reduce<Record<string, MovementResponse[]>>((groups, mov) => {
@@ -187,7 +189,7 @@ function MovementList({
       .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
       .map(([date, movs]) => [
         date,
-        [...movs].sort((a, b) => b.id - a.id)
+        [...movs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || '') || b.id - a.id)
       ] as [string, MovementResponse[]]);
   }, [groupedMovements]);
 
@@ -217,7 +219,13 @@ function MovementList({
         )}
       </div>
 
-      {movements.length === 0 ? (
+      {error && (
+        <div role="alert" className="mb-3 space-y-2 text-sm text-danger-600 dark:text-rose-400">
+          <p>{error}</p>
+          <Button variant="outline" onClick={() => void refetch()} icon={<RotateCw />}>{t('common.retry')}</Button>
+        </div>
+      )}
+      {isLoading ? <p className="py-8 text-center text-sm text-neutral-500">{t('history.loading')}</p> : error && movements.length === 0 ? null : movements.length === 0 ? (
         <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 bg-neutral-100/50 dark:bg-neutral-900/50 rounded-3xl border border-dashed border-primary-200/50 dark:border-neutral-700/50">
           {t('history.noMovements')}
         </div>
@@ -283,6 +291,12 @@ function MovementList({
               </StaggeredEntry>
             </div>
           ))}
+          {hasNextPage && (
+            <Button variant="outline" className="w-full" onClick={() => void fetchNextPage()}
+              isLoading={isFetchingNextPage} icon={<ChevronDown />}>
+              {t('history.loadMore')}
+            </Button>
+          )}
         </div>
       )}
 
@@ -292,7 +306,6 @@ function MovementList({
 }
 
 export function HistoryPage() {
-  const { movements, isLoading } = useMovements();
   const { categories } = useCategories();
   const { triggerRect, captureTrigger } = useSharedElementModal();
   const { t, language } = useI18n();
@@ -400,24 +413,14 @@ export function HistoryPage() {
     setColumns(prev => prev.filter(c => c.id !== id));
   };
 
-  const getMovementsForColumn = (col: HistoryColumn) => {
-    let list = movements;
-
-    if (selectedDate) {
-      list = list.filter(m => {
-        const d = m.date ? m.date.substring(0, 10) : m.createdAt?.substring(0, 10);
-        return d === selectedDate;
-      });
-    }
-
-    if (col.id === 'col-main') {
-      if (effectiveMainType === 'ALL') return list;
-      return list.filter(m => m.type === effectiveMainType);
-    }
-    if (col.type === 'EXPENSE') return list.filter(m => m.type === 'EXPENSE');
-    if (col.type === 'INCOME') return list.filter(m => m.type === 'INCOME');
-    if (col.type === 'CATEGORY') return list.filter(m => m.categoryId === col.categoryId);
-    return list;
+  const getFiltersForColumn = (col: HistoryColumn): MovementFilters => {
+    const type = col.id === 'col-main' ? effectiveMainType : col.type;
+    return {
+      type: type === 'INCOME' || type === 'EXPENSE' ? type : undefined,
+      categoryId: col.type === 'CATEGORY' ? col.categoryId : undefined,
+      startDate: selectedDate ?? undefined,
+      endDate: selectedDate ?? undefined,
+    };
   };
 
   const selectedDateLabel = useMemo(() => {
@@ -452,7 +455,7 @@ export function HistoryPage() {
           {selectedDateLabel && (
             <div className="flex items-center gap-2 bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 px-4 py-2 rounded-2xl text-sm font-semibold shadow-sm">
               <CalendarIcon className="w-4 h-4 text-primary-500 dark:text-primary-400" />
-              <span>Día: {selectedDateLabel}</span>
+              <span>{t('history.day', { date: selectedDateLabel })}</span>
               <button
                 onClick={() => setSelectedDate(null)}
                 className="ml-2 hover:bg-primary-100 dark:hover:bg-primary-900 p-1 rounded-full text-primary-600 dark:text-primary-300 transition-colors"
@@ -467,7 +470,6 @@ export function HistoryPage() {
         <div className="flex gap-6 h-full min-h-[500px]">
           <div className="w-[280px] shrink-0 space-y-4 flex flex-col">
             <HistoryCalendar
-              movements={movements}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
               language={language}
@@ -517,9 +519,6 @@ export function HistoryPage() {
             ref={setDroppableRef}
             className={`flex-1 flex gap-6 overflow-x-auto pb-4 px-4 pt-2 -mx-4 rounded-3xl transition-colors min-h-[450px] ${isOver ? 'bg-primary-50 dark:bg-primary-950/40 border-2 border-dashed border-primary-200 dark:border-primary-800' : 'bg-transparent'}`}
           >
-            {isLoading ? (
-              <div className="text-neutral-500 dark:text-neutral-400 animate-pulse w-full text-center mt-12">{t('history.loading')}</div>
-            ) : (
               <div ref={columnsContainerRef} className="flex gap-6 h-full items-start w-full min-w-max">
                 {columns.map((col, index) => (
                   <MovementList
@@ -539,7 +538,7 @@ export function HistoryPage() {
                         ))}
                       </div>
                     ) : undefined}
-                    movements={getMovementsForColumn(col)}
+                    filters={getFiltersForColumn(col)}
                     isRemovable={index !== 0}
                     onClose={() => removeColumn(col.id)}
                     onMovementClick={(mov, e) => {
@@ -555,7 +554,6 @@ export function HistoryPage() {
                   </div>
                 )}
               </div>
-            )}
           </div>
         </div>
       </div>

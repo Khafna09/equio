@@ -5,6 +5,7 @@ export interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  logoutPending: boolean;
   login: (data: AuthResponse) => void;
   logout: () => Promise<void>;
   updateUser: (partialUser: Partial<AuthUser>) => void;

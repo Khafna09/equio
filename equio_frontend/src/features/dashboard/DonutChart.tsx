@@ -2,6 +2,7 @@ import { EChart } from '../../components/charts/EChart';
 import type { CategorySummary } from '../../types/dashboard.types';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
+import { escapeHtml } from '../../utils/escapeHtml';
 
 interface DonutTooltipParams {
   name?: string;
@@ -30,11 +31,11 @@ export function DonutChart({ data: categories, topCategories }: DonutChartProps)
     tooltip: {
       trigger: 'item',
       formatter: (params: DonutTooltipParams) => {
-        const value = formatCurrency(Number(params.value ?? 0));
+        const value = escapeHtml(formatCurrency(Number(params.value ?? 0)));
         const percentage = `${Number(params.percent ?? 0).toFixed(1)}%`;
 
         return `<div style="font-family: 'Plus Jakarta Sans', sans-serif;">
-          <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">${params.name ?? ''}</div>
+          <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">${escapeHtml(params.name ?? '')}</div>
           <div style="display: flex; align-items: baseline; gap: 8px;">
             <span style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;">${value}</span>
             <span style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: #7c3aed;">${percentage}</span>
@@ -83,7 +84,7 @@ export function DonutChart({ data: categories, topCategories }: DonutChartProps)
           style={{ height: '100%', width: '100%' }}
         />
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{t('dashboard.monthExpenses').toUpperCase()}</span>
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{t('dashboard.periodExpenses').toUpperCase()}</span>
           <span className="text-2xl font-bold text-neutral-900 dark:text-white tracking-tight mt-0.5">
             {formatCurrency(totalExpense)}
           </span>

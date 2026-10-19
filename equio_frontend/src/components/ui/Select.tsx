@@ -20,6 +20,7 @@ interface SelectProps<T extends SelectValue> {
   className?: string;
   contentClassName?: string;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
 export function Select<T extends SelectValue>({
@@ -30,6 +31,7 @@ export function Select<T extends SelectValue>({
   className,
   contentClassName,
   disabled = false,
+  ariaLabel,
 }: SelectProps<T>) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
@@ -55,6 +57,7 @@ export function Select<T extends SelectValue>({
     <div ref={containerRef} className="relative w-full">
       <button
         type="button"
+        aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(

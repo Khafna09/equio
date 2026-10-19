@@ -1,10 +1,10 @@
 import apiClient from './apiClient';
-import type { DashboardSummaryResponse } from '../types/dashboard.types';
+import type { DashboardPeriod, DashboardSummaryResponse } from '../types/dashboard.types';
 
 export const dashboardApi = {
-  getSummary: async (month?: number, year?: number) => {
+  getSummary: async (period: DashboardPeriod, referenceDate: string) => {
     const response = await apiClient.get<DashboardSummaryResponse>('/dashboard/summary', {
-      params: { month, year }
+      params: { period, referenceDate }
     });
     return response.data;
   }

@@ -1,3 +1,6 @@
+export type BudgetScope = 'GLOBAL' | 'LINKED_CATEGORY' | 'INDEPENDENT_CATEGORY';
+export type BudgetMode = 'NORMAL' | 'ADVANCED';
+
 export interface BudgetResponse {
   id: number;
   name: string;
@@ -13,12 +16,42 @@ export interface BudgetResponse {
   categoryColor: string | null;
   categoryIcon: string | null;
   parentBudgetId: number | null;
+  scope: BudgetScope;
   status: 'ACTIVE' | 'CLOSED';
   savingsType: 'PERCENTAGE' | 'FIXED' | null;
   savingsValue: number | null;
+  savingsPoolContribution?: number;
+  assignableAmount: number | null;
+  allocatedAmount: number | null;
+  unallocatedAmount: number | null;
+  canLink: boolean;
+  canDetach: boolean;
+  canClose: boolean;
   isOverBudget: boolean;
   createdAt: string;
   nextStartDate?: string;
+}
+
+export interface BudgetCapabilities {
+  advancedModeEnabled: boolean;
+  canCreateIndependent: boolean;
+  canLinkBudgets: boolean;
+}
+
+export interface BudgetModeResponse {
+  mode: BudgetMode;
+}
+
+export interface BudgetLinkPreview {
+  globalBudgetId: number;
+  budgetId: number;
+  startDate: string;
+  endDate: string | null;
+  budgetLimit: number;
+  assimilatedSpentAmount: number;
+  globalAssignableAmount: number;
+  globalAllocatedAmount: number;
+  globalUnallocatedAfterLink: number;
 }
 
 export interface BudgetRequest {
@@ -96,6 +129,7 @@ export interface BudgetPeriodComparison {
 export interface BudgetHistoryReport {
   budgetId: number;
   budgetName: string;
+  scope: Exclude<BudgetScope, 'LINKED_CATEGORY'>;
   startDate: string;
   endDate: string;
   totalAmount: number;

@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { format, parseISO, isValid } from 'date-fns';
+import { es, enUS } from 'date-fns/locale';
+import { useState, useMemo } from 'react';
 import { useBudgets } from '../../hooks/useBudgets';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -6,22 +8,26 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { BudgetDrawer } from './BudgetDrawer';
 import { BudgetCard } from './BudgetCard';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
-import { PiggyBank, MoreVertical, Calendar, Pencil, AlertTriangle, Wallet, XOctagon, Plus, Construction } from 'lucide-react';
+import { PiggyBank, MoreVertical, Calendar, Pencil, AlertTriangle, Wallet, XOctagon, Plus } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { EmptyBudgetState } from './EmptyBudgetState';
 import { InlineBudgetForm } from './InlineBudgetForm';
 import { BudgetHistoryList } from './BudgetHistoryList';
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
-import { getLocalStorageItem, setLocalStorageItem } from '../../utils/browserStorage';
 import type { BudgetResponse } from '../../types/budget.types';
 import { SavingsCard } from './SavingsCard';
 import { useBudgetOrder } from './useBudgetOrder';
 import { calculateBudgetMetrics } from './budgetMetrics';
 import { BudgetActionModals } from './BudgetActionModals';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { BudgetDetachDialog, BudgetLinkDialog } from './BudgetLinkDialog';
+import { BudgetModeSelector } from './BudgetModeSelector';
+import { BudgetModeTransitionDialog } from './BudgetModeTransitionDialog';
+import { useProfile } from '../../hooks/useProfile';
 interface SortableBudgetCardProps {
   budget: BudgetResponse;
   openMenuId: number | null;
@@ -30,6 +36,9 @@ interface SortableBudgetCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onUpdateAmount: (amount: number) => Promise<void>;
+  onLink?: () => void;
+  onDetach?: () => void;
+  onClose?: () => void;
 }
 function SortableBudgetCard({
   budget,
@@ -39,6 +48,9 @@ function SortableBudgetCard({
   onEdit,
   onDelete,
   onUpdateAmount,
+  onLink,
+  onDetach,
+  onClose,
 }: SortableBudgetCardProps) {
   const {
     attributes,
@@ -69,36 +81,76 @@ function SortableBudgetCard({
         onEdit={onEdit}
         onDelete={onDelete}
         onUpdateAmount={onUpdateAmount}
+        onLink={onLink}
+        onDetach={onDetach}
+        onClose={onClose}
       />
     </div>
   );
 }
+
 export function BudgetsPage() {
-  const { budgets, isLoading, deleteBudget, closeBudget, updateBudget, createBudget } = useBudgets();
+  const {
+    budgets,
+    capabilities,
+    isLoading,
+    error,
+    refetch,
+    deleteBudget,
+    closeBudget,
+    updateBudget,
+    createBudget,
+    linkBudget,
+    detachBudget,
+    changeBudgetMode,
+    isChangingBudgetMode,
+  } = useBudgets();
+  const { profile, isLoading: isProfileLoading } = useProfile();
   const { formatCurrency: formatCurrencyHook } = useCurrency();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const formatCurrency = (val: number) => formatCurrencyHook(val, { maximumFractionDigits: 0 });
+  const formatExactPeriod = (startDate?: string | null, endDate?: string | null) => {
+    if (!startDate || !endDate) return t('budgets.continuousMonthlyCycle');
+    try {
+      const s = parseISO(startDate.includes('T') ? startDate : `${startDate}T00:00:00`);
+      const e = parseISO(endDate.includes('T') ? endDate : `${endDate}T00:00:00`);
+      if (isValid(s) && isValid(e)) {
+        const loc = language === 'es' ? es : enUS;
+        const startFormatted = format(s, 'd MMM', { locale: loc });
+        const endFormatted = format(e, 'd MMM yyyy', { locale: loc });
+        return t('budgets.dateRange', { start: startFormatted, end: endFormatted });
+      }
+    } catch {
+      // fallback
+    }
+    return t('budgets.dateRange', { start: startDate, end: endDate });
+  };
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | number | null>(null);
   const [budgetToEdit, setBudgetToEdit] = useState<Partial<BudgetResponse> | null>(null);
   const [drawerIsGlobal, setDrawerIsGlobal] = useState(true);
   
-  const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(() => {
-    return getLocalStorageItem('budgetAdvancedMode') === 'true';
-  });
-  useEffect(() => {
-    setLocalStorageItem('budgetAdvancedMode', String(isAdvancedMode));
-  }, [isAdvancedMode]);
+  const isAdvancedMode = profile?.budgetMode === 'ADVANCED';
   
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isSubBudgetDeleteModalOpen, setIsSubBudgetDeleteModalOpen] = useState(false);
   const [budgetActionTarget, setBudgetActionTarget] = useState<BudgetResponse | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [deleteCascade, setDeleteCascade] = useState<boolean>(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isDetachModalOpen, setIsDetachModalOpen] = useState(false);
+  const [isModeTransitionOpen, setIsModeTransitionOpen] = useState(false);
+  const [resumeModeTransition, setResumeModeTransition] = useState(false);
+  const [modeError, setModeError] = useState<string | null>(null);
   const dragSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
     })
   );
   const activeBudgets = useMemo(() => budgets.filter(b => b.status === 'ACTIVE'), [budgets]);
@@ -106,6 +158,14 @@ export function BudgetsPage() {
   const categoryBudgets = useMemo(
     () => activeBudgets.filter(b => b.categoryId),
     [activeBudgets]
+  );
+  const linkedBudgets = useMemo(
+    () => categoryBudgets.filter((budget) => budget.parentBudgetId != null),
+    [categoryBudgets]
+  );
+  const independentBudgets = useMemo(
+    () => categoryBudgets.filter((budget) => budget.parentBudgetId == null),
+    [categoryBudgets]
   );
   const { orderedBudgets: orderedCategoryBudgets, reorder } = useBudgetOrder(categoryBudgets);
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
@@ -123,7 +183,7 @@ export function BudgetsPage() {
     await updateBudget({
       id: budget.id,
       data: {
-        name: budget.name,
+        name: budget.categoryName || budget.name,
         totalAmount: newAmount,
         isFixed: budget.isFixed,
         startDate: budget.startDate,
@@ -134,11 +194,11 @@ export function BudgetsPage() {
       }
     });
   };
-  const handleInlineSave = async (categoryId: number, amount: number) => {
+  const handleInlineSave = async (categoryId: number, amount: number, categoryName: string) => {
     if (!globalBudget) return;
     
     await createBudget({
-      name: "Sub-presupuesto",
+      name: categoryName,
       totalAmount: amount,
       isFixed: globalBudget.isFixed,
       startDate: globalBudget.startDate,
@@ -147,44 +207,112 @@ export function BudgetsPage() {
       parentBudgetId: globalBudget.id
     });
   };
+  const openLinkDialog = (budget: BudgetResponse) => {
+    setBudgetActionTarget(budget);
+    setIsLinkModalOpen(true);
+  };
+  const openDetachDialog = (budget: BudgetResponse) => {
+    setBudgetActionTarget(budget);
+    setIsDetachModalOpen(true);
+  };
+  const openCloseDialog = (budget: BudgetResponse) => {
+    setBudgetActionTarget(budget);
+    setActionError(null);
+    setIsCloseModalOpen(true);
+  };
   const openDrawer = (isGlobal: boolean = true) => {
     const resolvedIsGlobal = !isAdvancedMode && !globalBudget ? true : isGlobal;
     setBudgetToEdit(null);
     setDrawerIsGlobal(resolvedIsGlobal);
     setIsDrawerOpen(true);
   };
+  const handleDrawerClose = () => {
+    setIsDrawerOpen(false);
+    if (resumeModeTransition) {
+      setResumeModeTransition(false);
+      setIsModeTransitionOpen(true);
+    }
+  };
+  const changeMode = async (advanced: boolean) => {
+    if (advanced === isAdvancedMode || isChangingBudgetMode) return;
+    setModeError(null);
+    if (!advanced && independentBudgets.length > 0) {
+      setIsModeTransitionOpen(true);
+      return;
+    }
+    try {
+      await changeBudgetMode(advanced ? 'ADVANCED' : 'NORMAL');
+    } catch (error: unknown) {
+      setModeError(getApiErrorMessage(error, t('budgets.actionError'), t));
+    }
+  };
+  const enableNormalMode = async () => {
+    setModeError(null);
+    try {
+      await changeBudgetMode('NORMAL');
+      setIsModeTransitionOpen(false);
+    } catch (error: unknown) {
+      setModeError(getApiErrorMessage(error, t('budgets.actionError'), t));
+    }
+  };
+  const requestGuidedLink = (budget: BudgetResponse) => {
+    setIsModeTransitionOpen(false);
+    setResumeModeTransition(true);
+    openLinkDialog(budget);
+  };
+  const closeLinkDialog = () => {
+    setIsLinkModalOpen(false);
+    if (resumeModeTransition) {
+      setResumeModeTransition(false);
+      setIsModeTransitionOpen(true);
+    }
+  };
+  const createGlobalFromTransition = () => {
+    setIsModeTransitionOpen(false);
+    setResumeModeTransition(true);
+    openDrawer(true);
+  };
   const handleCloseBudget = async () => {
-    if (!budgetActionTarget) return;
+    if (!budgetActionTarget || isProcessing) return;
+    setActionError(null);
     setIsProcessing(true);
     try {
       await closeBudget(budgetActionTarget.id);
       setIsCloseModalOpen(false);
+    } catch (error: unknown) {
+      setActionError(getApiErrorMessage(error, t('budgets.actionError'), t));
     } finally {
       setIsProcessing(false);
     }
   };
   const handleDeleteBudget = async () => {
-    if (!budgetActionTarget) return;
+    if (!budgetActionTarget || isProcessing) return;
+    setActionError(null);
     setIsProcessing(true);
     try {
       const cascade = isAdvancedMode ? deleteCascade : true;
       await deleteBudget({ id: budgetActionTarget.id, cascade });
       setIsDeleteModalOpen(false);
+    } catch (error: unknown) {
+      setActionError(getApiErrorMessage(error, t('budgets.actionError'), t));
     } finally {
       setIsProcessing(false);
     }
   };
   const handleDeleteSubBudget = async () => {
-    if (!budgetActionTarget) return;
+    if (!budgetActionTarget || isProcessing) return;
+    setActionError(null);
     setIsProcessing(true);
     try {
       await deleteBudget({ id: budgetActionTarget.id, cascade: false });
       setIsSubBudgetDeleteModalOpen(false);
+    } catch (error: unknown) {
+      setActionError(getApiErrorMessage(error, t('budgets.actionError'), t));
     } finally {
       setIsProcessing(false);
     }
   };
-  if (isLoading && activeBudgets.length === 0 && budgets.length === 0) {
+  if ((isLoading || isProfileLoading) && activeBudgets.length === 0 && budgets.length === 0) {
     return (
       <div className="flex justify-center py-20 text-neutral-500 dark:text-neutral-400 animate-pulse">
         {t('budgets.loading')}
@@ -198,17 +326,14 @@ export function BudgetsPage() {
           <h1 className="text-4xl font-bold text-neutral-900 dark:text-white tracking-tight mb-2">{t('budgets.title')}</h1>
           <p className="text-neutral-500 dark:text-neutral-400">{t('budgets.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-3 bg-white dark:bg-neutral-800 px-4 py-2 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700">
-          <span className={`text-sm font-medium ${!isAdvancedMode ? 'text-neutral-900 dark:text-white' : 'text-neutral-400'}`}>{t('budgets.normalMode')}</span>
-          <button
-            type="button"
-            onClick={() => setIsAdvancedMode(!isAdvancedMode)}
-            className={`w-11 h-6 rounded-full transition-colors relative focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 shadow-inner ${isAdvancedMode ? 'bg-primary-500' : 'bg-neutral-200 dark:bg-neutral-700'}`}
-          >
-            <div className={`absolute top-1 left-1 bg-white dark:bg-neutral-800 w-4 h-4 rounded-full shadow-sm transition-transform ${isAdvancedMode ? 'translate-x-5' : ''}`} />
-          </button>
-          <span className={`text-sm font-medium ${isAdvancedMode ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400'}`}>{t('budgets.advancedMode')}</span>
-        </div>
+        <BudgetModeSelector
+          advanced={isAdvancedMode}
+          disabled={isProfileLoading
+            || isChangingBudgetMode
+            || (!isAdvancedMode && capabilities?.advancedModeEnabled === false)}
+          onChange={(advanced) => void changeMode(advanced)}
+        />
+        {modeError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{modeError}</p>}
       </div>
       <Tabs defaultValue="dashboard" className="w-full">
         <TabsList className="mb-6">
@@ -216,18 +341,34 @@ export function BudgetsPage() {
           <TabsTrigger value="history">{t('budgets.historyTab')}</TabsTrigger>
         </TabsList>
         <TabsContent value="dashboard" className="space-y-8 mt-0">
-          {isAdvancedMode ? (
-            <div className="py-20 px-6 text-center bg-white dark:bg-neutral-800 rounded-3xl border border-neutral-100 dark:border-neutral-700 shadow-sm flex flex-col items-center justify-center min-h-[360px]">
-              <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-500 mb-4 shadow-sm">
-                <Construction className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">{t('budgets.advancedTitle')}</h3>
-              <p className="text-neutral-500 dark:text-neutral-400 text-sm max-w-md leading-relaxed">
-                Estamos trabajando en nuevas herramientas para la gestión avanzada de presupuestos independientes. Esta funcionalidad estará disponible muy pronto.
-              </p>
+          {error ? (
+            <div role="alert" className="flex items-center gap-3 text-red-600 dark:text-red-400">
+              <span>{error}</span>
+              <Button variant="secondary" onClick={() => refetch()}>{t('common.retry')}</Button>
             </div>
           ) : activeBudgets.length === 0 ? (
-            <EmptyBudgetState onOpenDrawer={() => openDrawer(true)} />
+            isAdvancedMode ? (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => openDrawer(true)}
+                  className="min-h-[220px] rounded-2xl border-2 border-dashed border-primary-200 bg-white p-7 text-left transition-colors hover:border-primary-400 hover:bg-primary-50 dark:border-primary-900 dark:bg-neutral-800 dark:hover:bg-primary-950/30"
+                >
+                  <Wallet className="mb-5 h-8 w-8 text-primary-500" />
+                  <span className="block text-lg font-bold text-neutral-900 dark:text-white">{t('budgets.configureGlobal')}</span>
+                  <span className="mt-2 block text-sm text-neutral-500 dark:text-neutral-400">{t('budgets.noGlobalDescription')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openDrawer(false)}
+                  className="min-h-[220px] rounded-2xl border-2 border-dashed border-neutral-200 bg-white p-7 text-left transition-colors hover:border-primary-300 hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-primary-950/30"
+                >
+                  <Plus className="mb-5 h-8 w-8 text-primary-500" />
+                  <span className="block text-lg font-bold text-neutral-900 dark:text-white">{t('budgets.createIndependent')}</span>
+                  <span className="mt-2 block text-sm text-neutral-500 dark:text-neutral-400">{t('budgets.createIndependentHint')}</span>
+                </button>
+              </div>
+            ) : <EmptyBudgetState onOpenDrawer={() => openDrawer(true)} />
           ) : (
             <>
               {!globalBudget && (
@@ -238,10 +379,10 @@ export function BudgetsPage() {
                   </div>
                   <h3 className="text-xl font-bold text-primary-900 dark:text-primary-200 mb-2 relative z-10">{t('budgets.noGlobalTitle')}</h3>
                   <p className="text-primary-700 dark:text-primary-300 text-sm mb-6 max-w-md relative z-10">
-                    Establece un límite total para tener un mejor control de tus finanzas y poder asignar topes de manera más estructurada a estas categorías.
+                    {t('budgets.noGlobalDescription')}
                   </p>
                   <Button variant="primary" onClick={() => openDrawer(true)} className="shadow-lg shadow-primary-500/30 relative z-10 font-semibold px-6 py-2.5">
-                    ✨ Configurar {t('budgets.globalBudget')}
+                    <span aria-hidden="true">{t('common.sparkles')}</span> {t('budgets.configureGlobal')}
                   </Button>
                 </div>
               )}
@@ -255,15 +396,33 @@ export function BudgetsPage() {
                       </div>
                       
                       <div className="absolute top-6 left-1/2 -translate-x-1/2 md:static md:translate-x-0">
-                        <span className="bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-300 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-sm">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {globalBudget.isFixed ? t('budgets.continuousMonthlyCycle') : t('budgets.dateRange', { start: globalBudget.startDate ?? '', end: globalBudget.endDate ?? '' })}
-                        </span>
+                        {globalBudget.isFixed ? (
+                          <span
+                            className="group relative inline-grid grid-cols-1 grid-rows-1 items-center bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-300 px-3 py-1 rounded-full text-xs font-semibold shadow-sm cursor-default select-none transition-colors hover:bg-primary-100/70 dark:hover:bg-primary-900/60"
+                            title={formatExactPeriod(globalBudget.startDate, globalBudget.endDate)}
+                          >
+                            <span className="col-start-1 row-start-1 flex items-center justify-center gap-1.5 transition-all duration-200 group-hover:opacity-0 group-hover:scale-95 whitespace-nowrap">
+                              <Calendar className="w-3.5 h-3.5 shrink-0" />
+                              <span>{t('budgets.continuousMonthlyCycle')}</span>
+                            </span>
+                            <span className="col-start-1 row-start-1 flex items-center justify-center gap-1.5 opacity-0 scale-95 transition-all duration-200 group-hover:opacity-100 group-hover:scale-100 whitespace-nowrap pointer-events-none">
+                              <Calendar className="w-3.5 h-3.5 shrink-0 text-primary-500 dark:text-primary-400" />
+                              <span>{formatExactPeriod(globalBudget.startDate, globalBudget.endDate)}</span>
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-300 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+                            <Calendar className="w-3.5 h-3.5 shrink-0" />
+                            <span>{formatExactPeriod(globalBudget.startDate, globalBudget.endDate)}</span>
+                          </span>
+                        )}
                       </div>
                       
                       <div className="relative z-20">
                         <button 
                           onClick={() => setOpenMenuId(openMenuId === 'global' ? null : 'global')}
+                          aria-label={t('budgets.moreActions')}
+                          aria-expanded={openMenuId === 'global'}
                           className="p-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
                         >
                           <MoreVertical className="w-5 h-5" />
@@ -294,6 +453,7 @@ export function BudgetsPage() {
                                   onClick={() => {
                                     setOpenMenuId(null);
                                     setBudgetActionTarget(globalBudget);
+                                    setActionError(null);
                                     setIsCloseModalOpen(true);
                                   }}
                                   className="w-full px-4 py-2.5 text-left text-sm text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30 flex items-center gap-3 transition-colors"
@@ -304,6 +464,7 @@ export function BudgetsPage() {
                                   onClick={() => {
                                     setOpenMenuId(null);
                                     setBudgetActionTarget(globalBudget);
+                                    setActionError(null);
                                     setIsDeleteModalOpen(true);
                                   }}
                                   className="w-full px-4 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-3 transition-colors"
@@ -344,19 +505,21 @@ export function BudgetsPage() {
                       )}
                     </div>
                   </Card>
-                  <SavingsCard globalBudget={globalBudget} onUpdateBudget={updateBudget} />
+                  <SavingsCard key={`${globalBudget.id}-${globalBudget.savingsType}-${globalBudget.savingsValue}`} globalBudget={globalBudget} onUpdateBudget={updateBudget} />
                 </div>
               )}
               <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-neutral-600 dark:text-neutral-300 tracking-tight">{t('budgets.categoriesTitle')}</h2>
-                  <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-2 py-1 rounded-md text-xs font-semibold">{t('budgets.subcategoriesCount', { count: categoryBudgets.length })}</span>
+                  <h2 className="text-lg font-semibold text-neutral-600 dark:text-neutral-300 tracking-tight">
+                    {isAdvancedMode ? t('budgets.linkedBudgetsTitle') : t('budgets.categoriesTitle')}
+                  </h2>
+                  <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-2 py-1 rounded-md text-xs font-semibold">{t('budgets.subcategoriesCount', { count: linkedBudgets.length })}</span>
                 </div>
                 
                 <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={orderedCategoryBudgets.map((budget) => budget.id)} strategy={rectSortingStrategy}>
+                  <SortableContext items={orderedCategoryBudgets.filter((budget) => budget.parentBudgetId != null).map((budget) => budget.id)} strategy={rectSortingStrategy}>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {orderedCategoryBudgets.map((budget) => (
+                      {orderedCategoryBudgets.filter((budget) => budget.parentBudgetId != null).map((budget) => (
                         <SortableBudgetCard
                           key={budget.id}
                           budget={budget}
@@ -369,38 +532,81 @@ export function BudgetsPage() {
                           }}
                           onDelete={() => {
                             setBudgetActionTarget(budget);
+                            setActionError(null);
                             setIsSubBudgetDeleteModalOpen(true);
                           }}
+                          onDetach={() => openDetachDialog(budget)}
+                          onClose={() => openCloseDialog(budget)}
                           onUpdateAmount={(amount) => handleUpdateAmount(budget, amount)}
                         />
                       ))}
                       {globalBudget ? (
                         <InlineBudgetForm
+                          key={globalBudget.id}
                           onSave={handleInlineSave}
                           globalBudgetRemaining={assignableSubBudgetsCapacity}
+                          assignedCategoryIds={categoryBudgets.map((budget) => budget.categoryId!)}
                         />
-                      ) : isAdvancedMode ? (
-                        <div
-                          className="border-2 border-dashed border-primary-200/50 rounded-3xl p-6 flex flex-col items-center justify-center text-center text-neutral-500 dark:text-neutral-400 hover:bg-primary-50 dark:hover:bg-primary-950/30 hover:border-primary-300 dark:hover:border-primary-700 transition-colors cursor-pointer min-h-[220px] group"
-                          onClick={() => openDrawer(false)}
-                        >
-                          <div className="w-12 h-12 bg-white dark:bg-neutral-800 rounded-full flex items-center justify-center shadow-sm mb-3 dark:bg-neutral-800 group-hover:bg-primary-50 dark:group-hover:bg-primary-950/40 group-hover:text-primary-500 dark:group-hover:text-primary-400 transition-colors">
-                            <Plus className="w-6 h-6" />
-                          </div>
-                          <p className="font-medium text-sm text-neutral-700 dark:text-neutral-200">{t('budgets.createIndependent')}</p>
-                          <p className="text-xs mt-1 px-4">{t('budgets.createIndependentHint')}</p>
-                        </div>
-                      ) : (
+                      ) : !isAdvancedMode ? (
                         <div className="border-2 border-dashed border-neutral-200 dark:border-neutral-700/50 rounded-3xl p-6 flex flex-col items-center justify-center text-center text-neutral-400 dark:text-neutral-500 min-h-[220px] bg-neutral-50/50 dark:bg-neutral-900/50">
                           <Wallet className="w-8 h-8 mb-2 opacity-50" />
                           <p className="font-medium text-sm">{t('budgets.requiresGlobal')}</p>
                           <p className="text-xs mt-1 px-4">{t('budgets.requiresGlobalHint')}</p>
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </SortableContext>
                 </DndContext>
               </div>
+              {isAdvancedMode && (
+                <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-lg font-semibold text-neutral-700 dark:text-neutral-200 tracking-tight">{t('budgets.independentBudgetsTitle')}</h2>
+                      <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t('budgets.independentBudgetsDescription')}</p>
+                    </div>
+                    <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-2 py-1 rounded-md text-xs font-semibold">{t('budgets.subcategoriesCount', { count: independentBudgets.length })}</span>
+                  </div>
+                  <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={orderedCategoryBudgets.filter((budget) => budget.parentBudgetId == null).map((budget) => budget.id)} strategy={rectSortingStrategy}>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {orderedCategoryBudgets.filter((budget) => budget.parentBudgetId == null).map((budget) => (
+                          <SortableBudgetCard
+                            key={budget.id}
+                            budget={budget}
+                            openMenuId={typeof openMenuId === 'number' ? openMenuId : null}
+                            setOpenMenuId={setOpenMenuId}
+                            isAdvancedMode
+                            onEdit={() => {
+                              setBudgetToEdit(budget);
+                              setIsDrawerOpen(true);
+                            }}
+                            onDelete={() => {
+                              setBudgetActionTarget(budget);
+                              setActionError(null);
+                              setIsSubBudgetDeleteModalOpen(true);
+                            }}
+                            onLink={() => openLinkDialog(budget)}
+                            onClose={() => openCloseDialog(budget)}
+                            onUpdateAmount={(amount) => handleUpdateAmount(budget, amount)}
+                          />
+                        ))}
+                        <button
+                          type="button"
+                          className="border-2 border-dashed border-primary-200/60 rounded-2xl p-6 flex flex-col items-center justify-center text-center text-neutral-500 dark:text-neutral-400 hover:bg-primary-50 dark:hover:bg-primary-950/30 hover:border-primary-300 dark:hover:border-primary-700 transition-colors min-h-[220px] group"
+                          onClick={() => openDrawer(false)}
+                        >
+                          <span className="w-12 h-12 bg-white dark:bg-neutral-800 rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:text-primary-500 dark:group-hover:text-primary-400 transition-colors">
+                            <Plus className="w-6 h-6" />
+                          </span>
+                          <span className="font-medium text-sm text-neutral-700 dark:text-neutral-200">{t('budgets.createIndependent')}</span>
+                          <span className="text-xs mt-1 px-4">{t('budgets.createIndependentHint')}</span>
+                        </button>
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              )}
             </>
           )}
         </TabsContent>
@@ -410,11 +616,37 @@ export function BudgetsPage() {
       </Tabs>
       <BudgetDrawer 
         isOpen={isDrawerOpen} 
-        onClose={() => setIsDrawerOpen(false)}
+        onClose={handleDrawerClose}
         budgetToEdit={budgetToEdit}
         defaultIsGlobal={drawerIsGlobal}
         isAdvancedMode={isAdvancedMode}
-        independentBudgets={categoryBudgets.filter(b => !b.parentBudgetId)}
+        independentBudgets={independentBudgets}
+      />
+      <BudgetLinkDialog
+        isOpen={isLinkModalOpen}
+        budget={budgetActionTarget}
+        globalBudget={globalBudget ?? null}
+        onClose={closeLinkDialog}
+        onConfirm={(globalBudgetId, budgetId) => linkBudget({ globalBudgetId, budgetId }).then(() => undefined)}
+      />
+      <BudgetDetachDialog
+        isOpen={isDetachModalOpen}
+        budget={budgetActionTarget}
+        onClose={() => setIsDetachModalOpen(false)}
+        onConfirm={(globalBudgetId, budgetId) => detachBudget({ globalBudgetId, budgetId }).then(() => undefined)}
+      />
+      <BudgetModeTransitionDialog
+        isOpen={isModeTransitionOpen}
+        independentBudgets={independentBudgets}
+        globalBudget={globalBudget}
+        isChangingMode={isChangingBudgetMode}
+        modeError={modeError}
+        onClose={() => setIsModeTransitionOpen(false)}
+        onCreateGlobal={createGlobalFromTransition}
+        onRequestLink={requestGuidedLink}
+        onCloseBudget={(budgetId) => closeBudget(budgetId)}
+        onDeleteBudget={(budgetId) => deleteBudget({ id: budgetId, cascade: false })}
+        onEnableNormalMode={enableNormalMode}
       />
       <BudgetActionModals
         closeOpen={isCloseModalOpen}
@@ -422,6 +654,7 @@ export function BudgetsPage() {
         deleteSubBudgetOpen={isSubBudgetDeleteModalOpen}
         isAdvancedMode={isAdvancedMode}
         isProcessing={isProcessing}
+        actionError={actionError}
         deleteCascade={deleteCascade}
         target={budgetActionTarget}
         onCloseClose={() => setIsCloseModalOpen(false)}

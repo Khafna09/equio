@@ -79,7 +79,7 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
         }, 180);
       }
     } catch (error: unknown) {
-      setSubmitError(getApiErrorMessage(error, t('savings.updateError')));
+      setSubmitError(getApiErrorMessage(error, t('savings.updateError'), t));
     } finally {
       setIsSubmitting(false);
     }

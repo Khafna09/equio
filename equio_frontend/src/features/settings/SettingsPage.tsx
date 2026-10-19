@@ -72,7 +72,7 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (error: unknown) {
-      setSaveError(getApiErrorMessage(error, t('settings.saveError')));
+      setSaveError(getApiErrorMessage(error, t('settings.saveError'), t));
     } finally {
       setIsSavingPersonal(false);
     }
@@ -84,7 +84,7 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
       await updateProfile(data);
       return true;
     } catch (error: unknown) {
-      setSaveError(getApiErrorMessage(error, t('settings.saveError')));
+      setSaveError(getApiErrorMessage(error, t('settings.saveError'), t));
       return false;
     }
   };
@@ -129,6 +129,63 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
     });
   };
 
+  const currencyOptions = [
+    {
+      value: 'PEN',
+      icon: (
+        <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 shrink-0 border border-neutral-200/70 dark:border-neutral-600/70">
+          PEN
+        </span>
+      ),
+      label: `${t('settings.currencyPEN')} (S/.)`,
+    },
+    {
+      value: 'USD',
+      icon: (
+        <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 shrink-0 border border-neutral-200/70 dark:border-neutral-600/70">
+          USD
+        </span>
+      ),
+      label: `${t('settings.currencyUSD')} ($)`,
+    },
+    {
+      value: 'EUR',
+      icon: (
+        <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 shrink-0 border border-neutral-200/70 dark:border-neutral-600/70">
+          EUR
+        </span>
+      ),
+      label: `${t('settings.currencyEUR')} (€)`,
+    },
+    {
+      value: 'MXN',
+      icon: (
+        <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 shrink-0 border border-neutral-200/70 dark:border-neutral-600/70">
+          MXN
+        </span>
+      ),
+      label: `${t('settings.currencyMXN')} ($)`,
+    },
+    {
+      value: 'COP',
+      icon: (
+        <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 shrink-0 border border-neutral-200/70 dark:border-neutral-600/70">
+          COP
+        </span>
+      ),
+      label: `${t('settings.currencyCOP')} ($)`,
+    },
+    {
+      value: 'CLP',
+      icon: (
+        <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 shrink-0 border border-neutral-200/70 dark:border-neutral-600/70">
+          CLP
+        </span>
+      ),
+      label: `${t('settings.currencyCLP')} ($)`,
+    },
+  ];
+
   return (
     <div className="space-y-8">
       <div>
@@ -147,7 +204,7 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
         </TabsList>
 
         <TabsContent value="profile">
-          <Card className="p-8 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
+          <Card className="p-8 bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700">
             {saveError ? (
               <div className="mb-5 rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
                 {saveError}
@@ -160,7 +217,7 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
                   <Input label={t('auth.firstName')} value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={50} required />
                   <Input label={t('auth.lastName')} value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={50} required />
                 </div>
-                <div className="mt-4 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700">
+                <div className="mt-4 p-4 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-700">
                   <p className="font-medium text-neutral-900 dark:text-white mb-1">{t('settings.email')}</p>
                   <p className="text-neutral-500 dark:text-neutral-400">{user?.email}</p>
                   <p className="text-xs text-neutral-400 mt-2">{t('settings.emailLocked')}</p>
@@ -182,28 +239,21 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
               <div className="pt-8 mt-8 border-t border-neutral-100 dark:border-neutral-800">
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">{t('settings.preferences')}</h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl gap-4">
                     <div>
                       <p className="font-medium text-neutral-900 dark:text-white">{t('settings.currency')}</p>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('settings.currencyHint')}</p>
                     </div>
-                    <div className="w-44">
+                    <div className="w-full sm:w-64 shrink-0">
                       <Select
                         value={currency}
                         onChange={handleCurrencyChange}
-                        options={[
-                          { value: 'PEN', label: 'Soles (S/.)' },
-                          { value: 'USD', label: 'US Dollars ($)' },
-                          { value: 'EUR', label: 'Euros (€)' },
-                          { value: 'MXN', label: 'Mexican Pesos ($)' },
-                          { value: 'COP', label: 'Colombian Pesos ($)' },
-                          { value: 'CLP', label: 'Chilean Pesos ($)' },
-                        ]}
+                        options={currencyOptions}
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl gap-4">
+                  <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl gap-4">
                     <div>
                       <p className="font-medium text-neutral-900 dark:text-white">{t('settings.language')}</p>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('settings.languageHint')}</p>
@@ -220,7 +270,7 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl gap-4">
+                  <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl gap-4">
                     <div>
                       <p className="font-medium text-neutral-900 dark:text-white">{t('settings.timeFormat')}</p>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('settings.timeFormatHint')}</p>
@@ -237,7 +287,7 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl">
+                  <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl">
                     <div>
                       <p className="font-medium text-neutral-900 dark:text-white">{t('settings.appearance')}</p>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('settings.appearanceHint')}</p>
@@ -250,7 +300,7 @@ function SettingsPageContent({ profile, updateProfile }: SettingsPageContentProp
         </TabsContent>
 
         <TabsContent value="categories">
-          <Card className="p-8 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
+          <Card className="p-8 bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700">
             <CategoriesManager />
           </Card>
         </TabsContent>

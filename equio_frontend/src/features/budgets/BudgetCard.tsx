@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
-import { MoreVertical, Pencil, Trash2, Check, X, GripVertical } from 'lucide-react';
+import { MoreVertical, Pencil, Trash2, Check, X, GripVertical, Link2, Unlink, CircleStop } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
@@ -19,9 +19,23 @@ interface BudgetCardProps {
   openMenuId: number | null;
   setOpenMenuId: (id: number | null) => void;
   isAdvancedMode?: boolean;
+  onLink?: () => void;
+  onDetach?: () => void;
+  onClose?: () => void;
 }
 
-export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuId, setOpenMenuId, isAdvancedMode = false }: BudgetCardProps) {
+export function BudgetCard({
+  budget,
+  onEdit,
+  onDelete,
+  onUpdateAmount,
+  openMenuId,
+  setOpenMenuId,
+  isAdvancedMode = false,
+  onLink,
+  onDetach,
+  onClose,
+}: BudgetCardProps) {
   const { formatCurrency: formatCurrencyHook } = useCurrency();
   const { t } = useI18n();
   const formatCurrency = (val: number) => formatCurrencyHook(val, { maximumFractionDigits: 0 });
@@ -43,7 +57,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
       await onUpdateAmount(val);
       setIsEditingAmount(false);
     } catch (error: unknown) {
-      setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
+      setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError'), t));
     } finally {
       setIsSaving(false);
     }
@@ -61,7 +75,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-neutral-900 dark:text-white text-lg flex items-center gap-2 truncate">
-              {isAdvancedMode ? budget.name : (budget.categoryName || t('common.category'))}
+              {budget.categoryName || t('common.category')}
               {isAdvancedMode && budget.parentBudgetId && (
                 <span className="text-[10px] bg-primary-50 text-primary-600 px-1.5 py-0.5 rounded-md font-medium uppercase tracking-wider">
                   {t('budgets.linked')}
@@ -74,7 +88,9 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
               )}
             </h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-              {isAdvancedMode ? (budget.categoryName || t('common.category')) : t('budgets.subBudgetLabel')}
+              {isAdvancedMode
+                ? t(budget.parentBudgetId ? 'budgets.linked' : 'budgets.independent')
+                : t('budgets.subBudgetLabel')}
             </p>
           </div>
         </div>
@@ -87,6 +103,8 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
           </span>
           <button
             onClick={() => setOpenMenuId(openMenuId === budget.id ? null : budget.id)}
+            aria-label={t('budgets.moreActions')}
+            aria-expanded={openMenuId === budget.id}
             className="text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 p-1 rounded-lg transition-colors"
           >
             <MoreVertical className="w-5 h-5" />
@@ -107,6 +125,39 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 >
                   <Pencil className="w-4 h-4" /> {t('budgets.editBudget')}
                 </button>
+                {isAdvancedMode && budget.canLink && onLink && (
+                  <button
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      onLink();
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-950/30 flex items-center gap-2"
+                  >
+                    <Link2 className="w-4 h-4" /> {t('budgets.linkAction')}
+                  </button>
+                )}
+                {isAdvancedMode && budget.canDetach && onDetach && (
+                  <button
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      onDetach();
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 flex items-center gap-2"
+                  >
+                    <Unlink className="w-4 h-4" /> {t('budgets.detachAction')}
+                  </button>
+                )}
+                {isAdvancedMode && budget.canClose && onClose && (
+                  <button
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      onClose();
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/30 flex items-center gap-2"
+                  >
+                    <CircleStop className="w-4 h-4" /> {t('budgets.closePeriodNow')}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setOpenMenuId(null);
@@ -142,6 +193,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 <span className="text-neutral-500 dark:text-neutral-400 font-medium">{t('common.of')} {formatCurrency(budget.totalAmount)}</span>
                 <button
                   onClick={() => setIsEditingAmount(true)}
+                  aria-label={t('budgets.editLimit')}
                   className="text-neutral-300 hover:text-neutral-500 dark:hover:text-neutral-300 dark:text-neutral-400 transition-colors"
                 >
                   <Pencil className="w-3.5 h-3.5" />
@@ -169,6 +221,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 />
                 <button
                   onClick={handleSaveAmount}
+                  aria-label={t('common.save')}
                   disabled={isSaving}
                   className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30 rounded transition-colors"
                 >
@@ -176,6 +229,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 </button>
                 <button
                   onClick={() => setIsEditingAmount(false)}
+                  aria-label={t('common.cancel')}
                   disabled={isSaving}
                   className="p-1 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors"
                 >

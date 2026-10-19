@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { DayPicker, type DayPickerProps, type CaptionLabelProps } from 'react-day-picker';
 import { ChevronLeft, ChevronRight, ChevronDown, X } from 'lucide-react';
 import { format, isValid, type Locale } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { enUS, es } from 'date-fns/locale';
 import { cn } from '../../utils/classNames';
+import { useI18n } from '../../i18n/i18nContextValue';
 import 'react-day-picker/dist/style.css';
 
 export type CalendarProps = DayPickerProps & {
@@ -11,7 +12,9 @@ export type CalendarProps = DayPickerProps & {
   compact?: boolean;
 };
 
-export function Calendar({ className, compact = false, month: controlledMonth, onMonthChange, locale = es, ...props }: CalendarProps) {
+export function Calendar({ className, compact = false, month: controlledMonth, onMonthChange, locale, ...props }: CalendarProps) {
+  const { language, t } = useI18n();
+  const resolvedLocale = locale ?? (language === 'en' ? enUS : es);
   const getInitialMonth = () => {
     if (controlledMonth && isValid(controlledMonth)) return controlledMonth;
     if (props.defaultMonth && isValid(props.defaultMonth)) return props.defaultMonth;
@@ -63,7 +66,7 @@ export function Calendar({ className, compact = false, month: controlledMonth, o
             setViewMode('months');
           }}
           className="group inline-flex items-center gap-1.5 px-2 py-1 -ml-1 rounded-lg font-semibold text-neutral-800 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-sm capitalize"
-          title="Cambiar mes y año"
+          title={t('components.changeMonthYear')}
         >
           <span>{captionProps.children}</span>
           <ChevronDown className="w-3.5 h-3.5 text-neutral-400 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-transform duration-200" />
@@ -125,7 +128,7 @@ export function Calendar({ className, compact = false, month: controlledMonth, o
           showOutsideDays
           month={currentMonth}
           onMonthChange={handleMonthChange}
-          locale={locale}
+          locale={resolvedLocale}
           components={customComponents}
           className={cn(
             'equio-calendar',
@@ -168,7 +171,7 @@ export function Calendar({ className, compact = false, month: controlledMonth, o
                 type="button"
                 onClick={() => setViewMode('days')}
                 className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors ml-1"
-                title="Volver a los días"
+                title={t('components.backToDays')}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -178,7 +181,7 @@ export function Calendar({ className, compact = false, month: controlledMonth, o
           <div className="grid grid-cols-3 gap-2 py-3 flex-1 items-center">
             {Array.from({ length: 12 }, (_, i) => {
               const monthDate = new Date(pickerYear, i, 1);
-              const monthLabel = format(monthDate, 'MMM', { locale: locale as Locale });
+              const monthLabel = format(monthDate, 'MMM', { locale: resolvedLocale as Locale });
               const isCurrentMonth = currentMonth.getFullYear() === pickerYear && currentMonth.getMonth() === i;
               const isTodayMonth = new Date().getFullYear() === pickerYear && new Date().getMonth() === i;
 
@@ -229,7 +232,7 @@ export function Calendar({ className, compact = false, month: controlledMonth, o
                 type="button"
                 onClick={() => setViewMode('months')}
                 className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors ml-1"
-                title="Volver a los meses"
+                title={t('components.backToMonths')}
               >
                 <X className="w-4 h-4" />
               </button>

@@ -1,5 +1,5 @@
 import apiClient from './apiClient';
-import type { BudgetHistoryReport, BudgetRequest, BudgetResponse } from '../types/budget.types';
+import type { BudgetCapabilities, BudgetHistoryReport, BudgetLinkPreview, BudgetMode, BudgetModeResponse, BudgetRequest, BudgetResponse } from '../types/budget.types';
 
 const MAX_REPORT_PDF_BYTES = 25 * 1024 * 1024;
 
@@ -14,14 +14,42 @@ export const budgetsApi = {
     return response.data;
   },
 
-  getHistoryReport: async (id: number) => {
-    const response = await apiClient.get<BudgetHistoryReport>(`/budgets/history/${id}/report`);
+  getCapabilities: async () => {
+    const response = await apiClient.get<BudgetCapabilities>('/budgets/capabilities');
+    return response.data;
+  },
+
+  changeMode: async (mode: BudgetMode) => {
+    const response = await apiClient.put<BudgetModeResponse>('/budgets/mode', { mode });
+    return response.data;
+  },
+
+  previewLink: async (budgetId: number, globalBudgetId: number) => {
+    const response = await apiClient.get<BudgetLinkPreview>(`/budgets/${budgetId}/preview-link`, {
+      params: { globalId: globalBudgetId },
+    });
+    return response.data;
+  },
+
+  link: async (globalBudgetId: number, budgetId: number) => {
+    const response = await apiClient.post<BudgetResponse>(`/budgets/${globalBudgetId}/children/${budgetId}`);
+    return response.data;
+  },
+
+  detach: async (globalBudgetId: number, budgetId: number) => {
+    const response = await apiClient.delete<BudgetResponse>(`/budgets/${globalBudgetId}/children/${budgetId}`);
+    return response.data;
+  },
+
+  getHistoryReport: async (id: number, signal?: AbortSignal) => {
+    const response = await apiClient.get<BudgetHistoryReport>(`/budgets/history/${id}/report`, { signal });
     return response.data;
   },
 
   downloadHistoryReport: async (id: number) => {
     const response = await apiClient.get<Blob>(`/budgets/history/${id}/report.pdf`, {
       responseType: 'blob',
+      timeout: 45_000,
     });
     const contentType = String(response.headers['content-type'] ?? response.data.type).toLowerCase();
     const signature = await response.data.slice(0, 5).text();

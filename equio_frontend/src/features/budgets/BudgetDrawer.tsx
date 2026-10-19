@@ -60,7 +60,6 @@ function BudgetDrawerContent({
       : defaultIsGlobal;
 
   const [viewMode, setViewMode] = useState<'FORM' | 'NEW_CATEGORY'>('FORM');
-  const [name, setName] = useState(budgetToEdit?.name ?? '');
   const [amount, setAmount] = useState(budgetToEdit?.totalAmount ? String(budgetToEdit.totalAmount) : '');
   const [isGlobal, setIsGlobal] = useState(initialIsGlobal);
   const [categoryId, setCategoryId] = useState<number | ''>(budgetToEdit?.categoryId ?? '');
@@ -72,9 +71,14 @@ function BudgetDrawerContent({
   const [futureRenewDay, setFutureRenewDay] = useState<number | ''>('');
   const [hasInteractedWithPeriod, setHasInteractedWithPeriod] = useState(false);
   const [selectedSubBudgetsToAdopt, setSelectedSubBudgetsToAdopt] = useState<number[]>([]);
-  const [isIndependentCategory, setIsIndependentCategory] = useState(false);
+  const [isIndependentCategory, setIsIndependentCategory] = useState(
+    isAdvancedMode && !initialIsGlobal && !budgetToEdit?.parentBudgetId
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const selectedCategoryName = categories.find((category) => category.id === categoryId)?.name
+    ?? budgetToEdit?.categoryName
+    ?? '';
 
   const handleClose = () => {
     setViewMode('FORM');
@@ -101,7 +105,6 @@ function BudgetDrawerContent({
             today,
             renewDay: Number(futureRenewDay) || 1,
             catchUpOption,
-            advancedMode: isAdvancedMode,
           });
           finalStartDate = period.startDate;
           finalEndDate = period.endDate;
@@ -115,12 +118,14 @@ function BudgetDrawerContent({
       }
 
       const data = {
-        name: isGlobal ? 'GLOBAL_BUDGET' : name.trim(),
+        name: isGlobal ? 'GLOBAL_BUDGET' : selectedCategoryName,
         totalAmount: parsedAmount,
         isFixed,
         startDate: finalStartDate,
         endDate: finalEndDate,
         categoryId: isGlobal ? undefined : (categoryId as number),
+        savingsType: budgetToEdit?.savingsType ?? undefined,
+        savingsValue: budgetToEdit?.savingsValue ?? undefined,
         retroactiveCatchUp: isRetroactive,
         subBudgetsToAdopt: (isGlobal && isAdvancedMode) ? selectedSubBudgetsToAdopt : undefined,
         isIndependent: (!isGlobal && isAdvancedMode) ? isIndependentCategory : false
@@ -133,7 +138,7 @@ function BudgetDrawerContent({
       }
       handleClose();
     } catch (error: unknown) {
-      setSubmitError(getApiErrorMessage(error, t('budgetDrawer.saveError')));
+      setSubmitError(getApiErrorMessage(error, t('budgetDrawer.saveError'), t));
       setViewMode('FORM');
     } finally {
       setIsSubmitting(false);
@@ -147,11 +152,11 @@ function BudgetDrawerContent({
       setSubmitError(t('common.invalidAmount'));
       return;
     }
-    if (!isGlobal && (!categoryId || !name.trim())) {
+    if (!isGlobal && (!categoryId || !selectedCategoryName)) {
       setSubmitError(t('common.invalidForm'));
       return;
     }
-    if (!isAdvancedMode && isFixed && !isEditing && !futureRenewDay) {
+    if (isFixed && !isEditing && !futureRenewDay) {
       setSubmitError(t('common.invalidForm'));
       return;
     }
@@ -233,14 +238,6 @@ function BudgetDrawerContent({
 
           {!isGlobal && (
             <div className="space-y-4 bg-neutral-50 dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-700">
-              <Input
-                label={t('budgetDrawer.descriptiveName')}
-                placeholder={t('budgetDrawer.weekendExample')}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={100}
-                required
-              />
               <CategorySelector
                 categories={categories}
                 isLoading={isCategoriesLoading}
@@ -271,13 +268,6 @@ function BudgetDrawerContent({
       ) : (
         !isGlobal && (
           <div className="space-y-4 bg-neutral-50 dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-700">
-            <Input
-              label={t('budgetDrawer.descriptiveName')}
-              placeholder={t('budgetDrawer.weekendExample')}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
             <CategorySelector
               categories={categories}
               isLoading={isCategoriesLoading}
@@ -309,7 +299,7 @@ function BudgetDrawerContent({
                   }}
                 />
                 <div className="flex-1 flex justify-between items-center text-sm">
-                  <span className="font-medium text-neutral-900 dark:text-white">{ib.name}</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{ib.categoryName || ib.name}</span>
                   <span className="text-neutral-500 dark:text-neutral-400">${ib.totalAmount}</span>
                 </div>
               </label>
@@ -364,6 +354,20 @@ function BudgetDrawerContent({
                 {!isEditing ? (
                   isAdvancedMode ? (
                     <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
+                          {t('budgetDrawer.monthStartQuestion')}
+                        </label>
+                        <Select
+                          value={futureRenewDay}
+                          onChange={(value) => setFutureRenewDay(Number(value))}
+                          placeholder={t('budgetDrawer.selectStartDay')}
+                          options={Array.from({ length: 31 }, (_, index) => ({
+                            value: index + 1,
+                            label: t('budgetDrawer.dayEachMonth', { day: index + 1 }),
+                          }))}
+                        />
+                      </div>
                       <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider block">
                         {t('budgetDrawer.startMonthlyQuestion')}
                       </label>
@@ -419,23 +423,6 @@ function BudgetDrawerContent({
                               {t('budgetDrawer.startTodayHint')}
                             </p>
 
-                            {catchUpOption === 'FROM_TODAY' && (
-                              <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                className="pt-3 flex items-center justify-between border-t border-purple-200/60"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">{t('budgetDrawer.futureStartDay')}</span>
-                                <div className="w-28">
-                                  <Select
-                                    value={futureRenewDay}
-                                    onChange={(val) => setFutureRenewDay(Number(val))}
-                                    options={Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: `${t('common.day')} ${i + 1}` }))}
-                                  />
-                                </div>
-                              </motion.div>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -629,7 +616,7 @@ function BudgetDrawerContent({
           variant="primary"
           className="w-full shadow-[0_0_20px_-5px_rgba(124,58,237,0.4)]"
           isLoading={isSubmitting}
-          disabled={!amount || (!isGlobal && (!categoryId || !name)) || (!isAdvancedMode && isFixed && !isEditing && !futureRenewDay)}
+          disabled={!amount || (!isGlobal && (!categoryId || !selectedCategoryName)) || (isFixed && !isEditing && !futureRenewDay)}
         >
           {isEditing ? t('common.saveChanges') : t('budgetDrawer.createBudget')}
         </Button>

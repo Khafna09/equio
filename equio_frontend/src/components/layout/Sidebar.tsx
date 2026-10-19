@@ -21,7 +21,8 @@ export function Sidebar() {
   ];
 
   const handleLogout = async () => {
-    await logout();
+    // Login displays the pending revocation and retry action if the API is unreachable.
+    await logout().catch(() => undefined);
     navigate('/login');
   };
 

@@ -3,9 +3,11 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { savingsApi } from '../api/savings.api';
 import type { SavingGoalResponse, SavingGoalRequest, FundRequest } from '../types/saving.types';
 import { useI18n } from '../i18n/i18nContextValue';
-import { invalidateDomains, queryKeys, queryStaleTimes } from '../api/queryCache';
+import { invalidateDomains, privateQueryKey, queryKeys, queryStaleTimes } from '../api/queryCache';
+import { useAuth } from '../contexts/authContextValue';
 
 export function useSavings() {
+  const { user } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
 
@@ -15,7 +17,8 @@ export function useSavings() {
     error,
     refetch
   } = useQuery<SavingGoalResponse[]>({
-    queryKey: queryKeys.savings.root,
+    queryKey: privateQueryKey(user?.id, queryKeys.savings.goals),
+    enabled: Boolean(user),
     queryFn: savingsApi.getAll,
     staleTime: queryStaleTimes.financial,
   });

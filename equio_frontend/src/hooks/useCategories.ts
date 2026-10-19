@@ -3,9 +3,11 @@ import { categoriesApi } from '../api/categories.api';
 import type { CategoryRequest, CategoryResponse } from '../types/category.types';
 import { getApiErrorMessage } from '../utils/apiError';
 import { useI18n } from '../i18n/i18nContextValue';
-import { invalidateDomains, queryKeys, queryStaleTimes } from '../api/queryCache';
+import { invalidateDomains, privateQueryKey, queryKeys, queryStaleTimes } from '../api/queryCache';
+import { useAuth } from '../contexts/authContextValue';
 
 export function useCategories() {
+  const { user } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
 
@@ -15,7 +17,8 @@ export function useCategories() {
     error,
     refetch
   } = useQuery<CategoryResponse[]>({
-    queryKey: queryKeys.categories.root,
+    queryKey: privateQueryKey(user?.id, queryKeys.categories.root),
+    enabled: Boolean(user),
     queryFn: categoriesApi.getAll,
     staleTime: queryStaleTimes.reference,
   });

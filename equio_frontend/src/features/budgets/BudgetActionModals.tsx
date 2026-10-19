@@ -4,6 +4,7 @@ import { Modal } from '../../components/ui/Modal';
 import { useCurrency } from '../../hooks/useCurrency';
 import { useI18n } from '../../i18n/i18nContextValue';
 import type { BudgetResponse } from '../../types/budget.types';
+import { calculateBudgetSettlement } from '../../utils/budgetSettlement';
 
 interface BudgetActionModalsProps {
   closeOpen: boolean;
@@ -11,6 +12,7 @@ interface BudgetActionModalsProps {
   deleteSubBudgetOpen: boolean;
   isAdvancedMode: boolean;
   isProcessing: boolean;
+  actionError: string | null;
   deleteCascade: boolean;
   target: BudgetResponse | null;
   onCloseClose: () => void;
@@ -28,6 +30,7 @@ export function BudgetActionModals({
   deleteSubBudgetOpen,
   isAdvancedMode,
   isProcessing,
+  actionError,
   deleteCascade,
   target,
   onCloseClose,
@@ -40,6 +43,7 @@ export function BudgetActionModals({
 }: BudgetActionModalsProps) {
   const { t } = useI18n();
   const { formatCurrency } = useCurrency();
+  const settlementAmount = calculateBudgetSettlement(target);
 
   return (
     <>
@@ -54,10 +58,18 @@ export function BudgetActionModals({
             <div className="text-sm">
               <p className="font-semibold mb-1 text-base">{t('budgets.closeQuestion')}</p>
               <p className="text-orange-800 dark:text-orange-200 opacity-90">
-                {t('budgets.closeDescription')}
+                {target?.scope === 'INDEPENDENT_CATEGORY'
+                  ? t('budgets.closeIndependentDescription')
+                  : t('budgets.closeDescription')}
               </p>
+              {settlementAmount > 0 && (
+                <p className="mt-3 rounded-lg bg-white/70 dark:bg-orange-950/50 px-3 py-2 font-semibold">
+                  {t('budgets.closeSavingsCredit', { amount: formatCurrency(settlementAmount) })}
+                </p>
+              )}
             </div>
           </div>
+          {actionError && <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">{actionError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" disabled={isProcessing} onClick={onCloseClose}>
               {t('common.cancel')}
@@ -104,6 +116,7 @@ export function BudgetActionModals({
               )}
             </div>
           </div>
+          {actionError && <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">{actionError}</p>}
           <div className="flex justify-end gap-3 pt-2 border-t border-neutral-100 dark:border-neutral-700">
             <Button variant="secondary" disabled={isProcessing} onClick={onDeleteClose}>
               {t('common.cancel')}
@@ -135,12 +148,15 @@ export function BudgetActionModals({
                 })}
               </p>
               <p className="text-red-700 dark:text-red-300 text-xs leading-relaxed mt-2">
-                {t('budgets.deleteSubDescription', {
-                  amount: formatCurrency(target?.totalAmount ?? 0),
-                })}
+                {target?.scope === 'INDEPENDENT_CATEGORY'
+                  ? t('budgets.independentDeleteDescription')
+                  : t('budgets.deleteSubDescription', {
+                      amount: formatCurrency(target?.totalAmount ?? 0),
+                    })}
               </p>
             </div>
           </div>
+          {actionError && <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">{actionError}</p>}
           <div className="flex justify-end gap-3 pt-2 border-t border-neutral-100 dark:border-neutral-700">
             <Button variant="secondary" disabled={isProcessing} onClick={onDeleteSubBudgetClose}>
               {t('common.cancel')}

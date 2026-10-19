@@ -1,3 +1,6 @@
+export type DashboardPeriod = 'AUTO' | 'BUDGET' | 'MONTH' | 'FORTNIGHT' | 'WEEK';
+export type DashboardCalendarPeriod = Extract<DashboardPeriod, 'MONTH' | 'FORTNIGHT' | 'WEEK'>;
+
 export interface CategorySummary {
   categoryName: string | null;
   categoryColor?: string;
@@ -7,6 +10,7 @@ export interface CategorySummary {
 }
 
 export interface DashboardSummaryResponse {
+  accountingStartAt?: string;
   totalIncome: number;
   totalExpense: number;
   balance: number;
@@ -14,4 +18,8 @@ export interface DashboardSummaryResponse {
   savingsDeduction: number | null;
   expenseCategories: CategorySummary[];
   topCategories: CategorySummary[];
+  period: Exclude<DashboardPeriod, 'AUTO'>;
+  startDate: string;
+  endDate: string;
+  hasActiveBudget: boolean;
 }

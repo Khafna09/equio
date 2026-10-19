@@ -29,11 +29,13 @@ export function calculateBudgetMetrics(
       : globalBudget.savingsValue;
   const effectiveGlobalLimit = Math.max(0, globalBudget.totalAmount - savingsDeduction);
   const globalRemainingAmount = Math.max(0, effectiveGlobalLimit - globalBudget.spentAmount);
-  const assignedAmount = categoryBudgets.reduce((total, budget) => total + budget.totalAmount, 0);
+  const assignedAmount = categoryBudgets
+    .filter((budget) => budget.status === 'ACTIVE' && budget.parentBudgetId === globalBudget.id)
+    .reduce((total, budget) => total + budget.totalAmount, 0);
   const assignableSubBudgetsCapacity = Math.max(0, effectiveGlobalLimit - assignedAmount);
   const globalProgress = effectiveGlobalLimit > 0
     ? Math.min(100, Number(((globalBudget.spentAmount / effectiveGlobalLimit) * 100).toFixed(2)))
-    : 0;
+    : globalBudget.spentAmount > 0 ? 100 : 0;
 
   return {
     savingsDeduction,

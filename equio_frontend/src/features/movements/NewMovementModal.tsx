@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { useMovements } from '../../hooks/useMovements';
@@ -25,7 +25,7 @@ interface NewMovementModalProps {
 }
 
 export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementModalProps) {
-  const { createMovement } = useMovements();
+  const { createMovement } = useMovements(undefined, { enabled: false });
   const { categories, isLoading: isCategoriesLoading } = useCategories();
   const { symbol } = useCurrency();
   const { formatTime } = useTimeFormat();
@@ -35,14 +35,31 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
   const [type, setType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState<Date>(new Date());
+  const [date, setDate] = useState<Date>(() => new Date());
+  const [initialDate, setInitialDate] = useState<Date>(() => new Date());
   const [selectedCategory, setSelectedCategory] = useState<CategoryResponse | null>(null);
 
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const [initialDate] = useState<Date>(new Date());
+  const resetForm = () => {
+    const now = new Date();
+    setDate(now);
+    setInitialDate(now);
+    setAmount('');
+    setDescription('');
+    setSelectedCategory(null);
+    setSubmitError(null);
+    setViewMode('MOVEMENT');
+    setType('EXPENSE');
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const timeoutId = window.setTimeout(resetForm, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -51,7 +68,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
   };
 
   const handleClose = () => {
-    setViewMode('MOVEMENT');
+    resetForm();
     onClose();
   };
 
@@ -77,12 +94,10 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
         categoryId: selectedCategory?.id,
         date: format(date, "yyyy-MM-dd'T'HH:mm:ss")
       });
-      setAmount('');
-      setDescription('');
-      setSelectedCategory(null);
-      handleClose();
+      resetForm();
+      onClose();
     } catch (error: unknown) {
-      setSubmitError(getApiErrorMessage(error, t('movements.saveMovementError')));
+      setSubmitError(getApiErrorMessage(error, t('movements.saveMovementError'), t));
     } finally {
       setIsSubmitting(false);
     }
@@ -207,7 +222,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
               </div>
 
               {submitError && (
-                <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 text-sm">
+                <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 dark:bg-tertiary-950/35 dark:text-tertiary-300 text-sm">
                   {submitError}
                 </div>
               )}

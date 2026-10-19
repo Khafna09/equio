@@ -37,7 +37,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       return (
         <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900 p-8">
           <div className="text-center max-w-md">
-            <div className="w-16 h-16 bg-tertiary-50 text-tertiary-500 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+            <div className="w-16 h-16 bg-tertiary-50 text-tertiary-500 dark:bg-tertiary-950/35 dark:text-tertiary-300 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
               {"\u26A0\uFE0F"}
             </div>
             <h1 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">{t.errorTitle}</h1>
@@ -45,7 +45,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             {this.state.error && (
               <details className="mb-6 text-left bg-neutral-100 dark:bg-neutral-800 rounded-2xl p-4">
                 <summary className="text-sm font-medium text-neutral-600 cursor-pointer">
-                  {getStoredLanguage() === 'en' ? 'Error details' : 'Detalles del error'}
+                  {t.errorDetails}
                 </summary>
                 <pre className="mt-2 text-xs text-tertiary-600 overflow-auto">
                   {this.state.error.message}

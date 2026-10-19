@@ -205,7 +205,7 @@ export function NewCategoryForm({ onSuccess, categoryToEdit }: NewCategoryFormPr
       onSuccess(catResult);
     } catch (error: unknown) {
       const fallback = categoryToEdit ? t('categories.updateError') : t('categories.createError');
-      setSubmitError(getApiErrorMessage(error, fallback));
+      setSubmitError(getApiErrorMessage(error, fallback, t));
     } finally {
       setIsSubmitting(false);
     }
@@ -217,7 +217,7 @@ export function NewCategoryForm({ onSuccess, categoryToEdit }: NewCategoryFormPr
     <form ref={formRef} onSubmit={handleSubmit} className="mt-2 flex flex-col gap-5">
       <Input label={t('categories.nameLabel')} placeholder={t('categories.nameExample')} value={name} onChange={(e) => { const value = e.target.value; setName(value); if (!value.trim()) setIsManualIcon(false); setSubmitError(null); }} maxLength={50} required />
 
-      {submitError && <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 text-xs font-semibold">{submitError}</div>}
+      {submitError && <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 dark:bg-tertiary-950/35 dark:text-tertiary-300 text-xs font-semibold">{submitError}</div>}
 
       <div>
         <div className="flex items-center justify-between mb-2">

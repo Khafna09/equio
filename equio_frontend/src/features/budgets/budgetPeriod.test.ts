@@ -9,7 +9,6 @@ describe('calculateFixedBudgetPeriod', () => {
       today: TODAY,
       renewDay: 10,
       catchUpOption: 'RETROACTIVE',
-      advancedMode: false,
     })).toEqual({
       startDate: '2026-08-10',
       endDate: '2026-09-09',
@@ -22,7 +21,6 @@ describe('calculateFixedBudgetPeriod', () => {
       today: TODAY,
       renewDay: 20,
       catchUpOption: 'RETROACTIVE',
-      advancedMode: false,
     })).toEqual({
       startDate: '2026-07-20',
       endDate: '2026-08-19',
@@ -30,15 +28,14 @@ describe('calculateFixedBudgetPeriod', () => {
     });
   });
 
-  it('uses the complete calendar month in advanced retroactive mode', () => {
+  it('uses the selected monthly day in advanced retroactive mode too', () => {
     expect(calculateFixedBudgetPeriod({
       today: TODAY,
       renewDay: 20,
       catchUpOption: 'RETROACTIVE',
-      advancedMode: true,
     })).toEqual({
-      startDate: '2026-08-01',
-      endDate: '2026-08-31',
+      startDate: '2026-07-20',
+      endDate: '2026-08-19',
       retroactive: true,
     });
   });
@@ -48,7 +45,6 @@ describe('calculateFixedBudgetPeriod', () => {
       today: TODAY,
       renewDay: 20,
       catchUpOption: 'FROM_TODAY',
-      advancedMode: false,
     })).toEqual({
       startDate: '2026-08-16',
       endDate: '2026-08-19',
@@ -61,7 +57,6 @@ describe('calculateFixedBudgetPeriod', () => {
       today: TODAY,
       renewDay: 16,
       catchUpOption: 'RETROACTIVE',
-      advancedMode: false,
     })).toEqual({
       startDate: '2026-08-16',
       endDate: '2026-09-15',

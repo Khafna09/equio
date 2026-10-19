@@ -3,9 +3,11 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { movementsApi } from '../api/movements.api';
 import type { MovementResponse, CreateMovementRequest, MovementFilters } from '../types/movement.types';
 import { useI18n } from '../i18n/i18nContextValue';
-import { invalidateDomains, queryKeys, queryStaleTimes } from '../api/queryCache';
+import { invalidateDomains, privateQueryKey, queryKeys, queryStaleTimes } from '../api/queryCache';
+import { useAuth } from '../contexts/authContextValue';
 
-export function useMovements(filters?: MovementFilters) {
+export function useMovements(filters?: MovementFilters, options: { enabled?: boolean; limit?: number } = {}) {
+  const { user } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
 
@@ -15,9 +17,13 @@ export function useMovements(filters?: MovementFilters) {
     error,
     refetch
   } = useQuery<MovementResponse[]>({
-    queryKey: queryKeys.movements.list(filters),
-    queryFn: () => movementsApi.getAll(filters),
+    queryKey: privateQueryKey(user?.id, options.limit
+      ? queryKeys.movements.recent(filters, options.limit) : queryKeys.movements.list(filters)),
+    queryFn: ({ signal }) => options.limit
+      ? movementsApi.getPage(filters, null, options.limit, signal).then((page) => page.items)
+      : movementsApi.getAll(filters),
     staleTime: queryStaleTimes.financial,
+    enabled: Boolean(user) && (options.enabled ?? true),
   });
 
   const createMutation = useMutation({
@@ -44,7 +50,7 @@ export function useMovements(filters?: MovementFilters) {
   return {
     movements,
     isLoading,
-    error: error ? getApiErrorMessage(error, t('common.loadMovementsError')) : null,
+    error: error ? getApiErrorMessage(error, t('common.loadMovementsError'), t) : null,
     refetch,
     createMovement: createMutation.mutateAsync,
     updateMovement: updateMutation.mutateAsync,

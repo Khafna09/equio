@@ -59,7 +59,7 @@ export function SavingGoalModal({ isOpen, onClose, triggerRect }: SavingGoalModa
       setTag('');
       onClose();
     } catch (error: unknown) {
-      setSubmitError(getApiErrorMessage(error, t('savings.createError')));
+      setSubmitError(getApiErrorMessage(error, t('savings.createError'), t));
     } finally {
       setIsSubmitting(false);
     }

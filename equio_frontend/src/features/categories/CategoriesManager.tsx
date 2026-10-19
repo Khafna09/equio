@@ -25,7 +25,7 @@ export function CategoriesManager() {
       try {
         await deleteCategory(id);
       } catch (error: unknown) {
-        setActionError(getApiErrorMessage(error, t('categories.deleteError')));
+        setActionError(getApiErrorMessage(error, t('categories.deleteError'), t));
       }
     }
   };
@@ -69,7 +69,7 @@ export function CategoriesManager() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {categories.map(cat => (
-            <div key={cat.id} className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+            <div key={cat.id} className="flex items-center justify-between p-4 bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-700 rounded-2xl shadow-sm hover:shadow-md transition-all group">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 border transition-transform hover:scale-105" style={getCategoryBadgeStyle(cat.color)}>
                   {cat.icon || t('common.folderIcon')}

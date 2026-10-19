@@ -42,11 +42,12 @@ export function EditMovementModal(props: EditMovementModalProps) {
 }
 
 function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: EditMovementModalProps) {
-  const { updateMovement, deleteMovement } = useMovements();
+  const { updateMovement, deleteMovement } = useMovements(undefined, { enabled: false });
   const { categories, isLoading: isCategoriesLoading } = useCategories();
   const { symbol } = useCurrency();
   const { formatTime } = useTimeFormat();
   const { t, language } = useI18n();
+  const isManaged = Boolean(movement?.source && movement.source !== 'MANUAL');
   const parsedInitialDate = parseMovementDate(movement);
   const initialCategory = movement?.categoryId != null
     ? categories.find((category) => category.id === movement.categoryId) ?? {
@@ -83,7 +84,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!movement) return;
+    if (!movement || isManaged) return;
 
     const parsedAmount = parsePositiveMoney(amount);
     if (parsedAmount === null) {
@@ -110,14 +111,14 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
       });
       handleClose();
     } catch (error: unknown) {
-      setSubmitError(getApiErrorMessage(error, t('movements.updateMovementError')));
+      setSubmitError(getApiErrorMessage(error, t('movements.updateMovementError'), t));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!movement) return;
+    if (!movement || isManaged) return;
     if (!window.confirm(t('movements.deleteConfirm'))) return;
 
     setIsDeleting(true);
@@ -125,7 +126,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
       await deleteMovement(movement.id);
       handleClose();
     } catch (error: unknown) {
-      setSubmitError(getApiErrorMessage(error, t('movements.deleteMovementError')));
+      setSubmitError(getApiErrorMessage(error, t('movements.deleteMovementError'), t));
     } finally {
       setIsDeleting(false);
     }
@@ -247,7 +248,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                             </div>
                           )}
                           <span className="text-lg mb-0.5">{cat.icon || t('common.folderIcon')}</span>
-                          <span className="text-[11px] font-semibold truncate max-w-full text-center leading-tight">{cat.name}</span>
+                          <span className="text-[11px] font-semibold truncate max-w-full text-center leading-tight dark:text-neutral-100">{cat.name}</span>
                         </button>
                       );
                     })
@@ -294,8 +295,9 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                 </div>
               </div>
 
+              {isManaged && <p className="text-sm text-neutral-600 dark:text-neutral-300">{t('apiErrors.movementManagedByGoal')}</p>}
               {submitError && (
-                <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 text-sm">
+                <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 dark:bg-tertiary-950/35 dark:text-tertiary-300 text-sm">
                   {submitError}
                 </div>
               )}
@@ -306,8 +308,9 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                   variant="secondary"
                   className="py-3.5 px-4 text-rose-500 hover:bg-rose-50 hover:text-rose-600 border-none bg-neutral-100 dark:bg-neutral-800"
                   onClick={handleDelete}
+                  aria-label={t('common.delete')}
                   isLoading={isDeleting}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isManaged}
                 >
                   <Trash2 className="w-5 h-5" />
                 </Button>
@@ -316,7 +319,7 @@ function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: Ed
                   variant="primary" 
                   className={`flex-1 py-3.5 text-base font-semibold transition-colors ${type === 'EXPENSE' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
                   isLoading={isSubmitting}
-                  disabled={parsePositiveMoney(amount) === null || isDeleting}
+                  disabled={parsePositiveMoney(amount) === null || isDeleting || isManaged}
                 >
                   {t('common.saveChanges')} &rarr;
                 </Button>

@@ -1,23 +1,6 @@
-import ReactEChartsCore from 'echarts-for-react/esm/core';
-import { LineChart, PieChart } from 'echarts/charts';
-import {
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-} from 'echarts/components';
-import * as echarts from 'echarts/core';
-import type { EChartsCoreOption } from 'echarts/core';
-import { SVGRenderer } from 'echarts/renderers';
-import type { CSSProperties } from 'react';
+import { lazy, Suspense, type CSSProperties } from 'react';
 
-echarts.use([
-  GridComponent,
-  LegendComponent,
-  LineChart,
-  PieChart,
-  SVGRenderer,
-  TooltipComponent,
-]);
+const Renderer = lazy(() => import('./EChartRenderer'));
 
 interface EChartProps {
   option: object;
@@ -26,11 +9,9 @@ interface EChartProps {
 
 export function EChart({ option, style }: EChartProps) {
   return (
-    <ReactEChartsCore
-      echarts={echarts}
-      option={option as EChartsCoreOption}
-      opts={{ renderer: 'svg' }}
-      style={style}
-    />
+    <Suspense fallback={<div style={style} aria-hidden="true"
+      className="min-h-[200px] w-full animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" />}>
+      <Renderer option={option} style={style} />
+    </Suspense>
   );
 }

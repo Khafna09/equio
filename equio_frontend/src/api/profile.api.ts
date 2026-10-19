@@ -8,6 +8,7 @@ export interface ProfileResponse {
   currency: string;
   theme: string;
   timeFormat: '12' | '24';
+  budgetMode: 'NORMAL' | 'ADVANCED';
 }
 
 export interface ProfileRequest {

@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { movementsApi } from '../../api/movements.api';
+import { privateQueryKey, queryKeys, queryStaleTimes } from '../../api/queryCache';
+import { useAuth } from '../../contexts/authContextValue';
 import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import {
   addMonths,
@@ -18,40 +22,37 @@ import {
 import { enUS, es } from 'date-fns/locale';
 import { Card } from '../../components/ui/Card';
 import { useI18n } from '../../i18n/i18nContextValue';
-import type { MovementResponse } from '../../types/movement.types';
 
 interface HistoryCalendarProps {
-  movements: MovementResponse[];
   selectedDate: string | null;
   onSelectDate: (date: string | null) => void;
   language: 'es' | 'en';
 }
 
 export function HistoryCalendar({
-  movements,
   selectedDate,
   onSelectDate,
   language
 }: HistoryCalendarProps) {
   const { t } = useI18n();
+  const { user } = useAuth();
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [isMonthGridOpen, setIsMonthGridOpen] = useState(false);
   const locale = language === 'en' ? enUS : es;
-
-  const movementDates = useMemo(() => {
-    const set = new Set<string>();
-    movements.forEach(m => {
-      const d = m.date ? m.date.substring(0, 10) : m.createdAt?.substring(0, 10);
-      if (d) set.add(d);
-    });
-    return set;
-  }, [movements]);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
   const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: startDate, end: endDate });
+  const rangeStart = format(startDate, 'yyyy-MM-dd');
+  const rangeEnd = format(endDate, 'yyyy-MM-dd');
+  const { data: dates = [], error, refetch } = useQuery({
+    queryKey: privateQueryKey(user?.id, queryKeys.movements.dates(rangeStart, rangeEnd)),
+    queryFn: ({ signal }) => movementsApi.getDates(rangeStart, rangeEnd, signal),
+    enabled: Boolean(user), staleTime: queryStaleTimes.financial,
+  });
+  const movementDates = new Set(dates);
 
   const weekDays = [
     t('history.weekdayMon'),
@@ -86,6 +87,9 @@ export function HistoryCalendar({
 
   return (
     <Card className="p-4 space-y-3">
+      {error && <button type="button" onClick={() => void refetch()} className="text-xs text-danger-600 dark:text-rose-400">
+        {t('common.loadMovementsError')}. {t('common.retry')}
+      </button>}
       <div className="flex items-center justify-between">
         <button
           type="button"
