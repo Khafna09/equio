@@ -1,0 +1,28 @@
+name: Production availability monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-availability-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    if: vars.EQUIO_MONITOR_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      PUBLIC_FRONTEND_ORIGIN: ${{ vars.PUBLIC_FRONTEND_ORIGIN }}
+      PUBLIC_API_ORIGIN: ${{ vars.PUBLIC_API_ORIGIN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node .github/scripts/monitor-production.mjs

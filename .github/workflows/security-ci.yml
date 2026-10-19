@@ -2,7 +2,7 @@ name: Security CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop, 'codex/feature/**', 'feature/**', 'release/**', 'hotfix/**']
   pull_request:
   workflow_dispatch:
 
@@ -28,7 +28,7 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Test backend
-        run: ./mvnw --batch-mode test
+        run: bash ./mvnw --batch-mode test
       - name: Build production container
         run: docker build --tag equio-backend:ci .
 
@@ -51,6 +51,9 @@ jobs:
       - run: npm run lint
       - run: npm run check:i18n
       - run: npm run test
+      - name: Test production monitor and bounded load tooling
+        working-directory: .
+        run: node --test .github/scripts/monitor-production.test.mjs .github/scripts/load-smoke.test.mjs
       - run: npm run build
       - name: Verify Cloudflare deployment artifacts
         run: |
@@ -102,8 +105,8 @@ jobs:
           cache: maven
       - name: Build and prepare PostgreSQL driver
         run: |
-          ./mvnw --batch-mode package -DskipTests
-          ./mvnw --batch-mode dependency:copy-dependencies -DincludeArtifactIds=postgresql -DoutputDirectory=target/dependency
+          bash ./mvnw --batch-mode package -DskipTests
+          bash ./mvnw --batch-mode dependency:copy-dependencies -DincludeArtifactIds=postgresql -DoutputDirectory=target/dependency
       - name: Create least-privileged runtime role
         run: java --class-path "target/dependency/*" scripts/DatabaseRoleSetup.java
       - name: Start API and apply Flyway migrations
@@ -120,11 +123,58 @@ jobs:
       - name: Verify grants, RLS and HTTP security controls
         run: |
           java --class-path "target/dependency/*" scripts/DatabaseSecurityCheck.java
+          java --class-path "target/dependency/*" scripts/FinancialIntegritySmokeTest.java
           java --class-path "target/dependency/*" scripts/SecuritySmokeTest.java
+      - name: Verify cycles and query limits against real PostgreSQL
+        env:
+          TEST_PG_JOBS: "true"
+        run: bash ./mvnw --batch-mode test -Dtest=BudgetCyclePostgresTest,DatabaseLimitsPostgresTest,MovementPaginationPostgresTest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: equio_frontend/package-lock.json
+      - name: Prepare browser regressions
+        working-directory: equio_frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Restart disposable API for browser regressions
+        run: |
+          kill $(cat ../backend.pid)
+          for attempt in {1..30}; do
+            if ! kill -0 $(cat ../backend.pid) 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          # Raised auth limits are test-only; the security smoke already verified defaults.
+          java -jar target/backend-*.jar \
+            --app.jobs.budgets.enabled=false \
+            --app.security.login-rate-limit-per-minute=100 \
+            --app.security.sign-up-rate-limit-per-minute=100 \
+            --app.cors.allowed-origins=http://localhost:5178 > ../backend-e2e.log 2>&1 &
+          echo $! > ../backend.pid
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:8081/actuator/health/readiness; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Verify browser authentication, isolation and movements
+        working-directory: equio_frontend
+        env:
+          E2E_BASE_URL: http://localhost:5178
+          E2E_API_BASE_URL: http://localhost:8081/api/v1
+        run: npm run test:e2e
       - name: Print API log on failure
         if: failure()
         working-directory: .
-        run: cat backend-integration.log
+        run: |
+          for log in backend-integration.log backend-e2e.log; do
+            if test -f "$log"; then cat "$log"; fi
+          done
       - name: Stop API
         if: always()
         working-directory: .

@@ -12,6 +12,8 @@ services:
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: prod
+      - key: TZ
+        value: America/Lima
       - key: DB_URL
         sync: false
       - key: DB_APP_USERNAME

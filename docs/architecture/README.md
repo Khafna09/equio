@@ -29,6 +29,15 @@ Reglas:
 
 El reporte historico separa composicion y renderizado: `BudgetHistoryPdfService` prepara contenido localizado y `BudgetHistoryPdfWriter` encapsula PDFBox y el layout.
 
+`MovementReadService` separa filtros, cursores y fechas de calendario del servicio
+de escritura. La pagina ordena por fecha/ID, aplica propietario y RLS, precarga
+categoria y no calcula COUNT. `MovementQueryService` conserva agregados y snapshots
+para otros modulos. La agregacion de categorias incluye movimientos sin categoria.
+
+`BudgetPdfDownloadService` controla concurrencia antes de leer el reporte y
+delegar el PDF. Las transacciones de lectura/preferencias terminan antes del
+renderizado; un PDF no retiene una conexion SQL mientras PDFBox trabaja.
+
 ## Frontend
 
 La organizacion sigue dominios en `features`, acceso remoto en `api`, estado de servidor en `hooks`, contratos en `types` y componentes reutilizables en `components`.
@@ -49,6 +58,11 @@ Extracciones actuales:
 - `budgetPeriod.ts` calcula ciclos fijos sin depender del modal.
 - `SavingsCard` y `BudgetActionModals` encapsulan formularios y confirmaciones.
 - `budgetMetrics.ts` y `useBudgetOrder.ts` separan calculos y persistencia del orden visual.
+- `useMovementPages` pagina cada columna/filtro; `HistoryCalendar` consulta solo
+  fechas de actividad del rango visible. Las mutaciones invalidan ambas lecturas.
+- `EChart` importa diferidamente `EChartRenderer`; mantiene un placeholder estable.
+- `BudgetHistoryList` usa consulta por usuario/presupuesto, cancelacion y
+  reintento; ya no asigna una respuesta tardia a un estado local compartido.
 
 ## Pruebas
 
@@ -56,7 +70,10 @@ Extracciones actuales:
 - Frontend: `npm run test` ejecuta Vitest sobre logica pura y contratos de cache.
 - CI ejecuta pruebas, lint, paridad i18n, build y analisis de dependencias.
 
-Las siguientes prioridades son integracion con PostgreSQL real para Flyway/RLS, pruebas de contrato OpenAPI y E2E de los flujos principales.
+CI incluye smokes HTTP/financieros, integracion PostgreSQL real de ciclos,
+timeouts, RLS y paginacion, y siete regresiones Playwright Chromium. Las pruebas
+de BD/HTTP usan cuentas y bases locales desechables; no datos del desarrollador.
+`.github/scripts/load-smoke.mjs` mide lecturas acotadas, no certifica capacidad cloud.
 
 ## Cambios estructurales
 
@@ -73,5 +90,10 @@ Antes de una refactorizacion amplia:
 - `BudgetServiceImpl`, `BudgetHistoryReportService` y `BudgetDrawer` aun concentran varios casos de uso.
 - Las asociaciones JPA entre `User`, `Category`, `Budget` y `SavingGoal` mantienen acoplamiento de modelo. Cambiarlas por identificadores requiere una migracion de esquema y no debe hacerse sin pruebas PostgreSQL.
 - Los contratos TypeScript se mantienen manualmente frente a OpenAPI.
-- Faltan pruebas frontend de componentes y E2E, y pruebas PostgreSQL de RLS/migraciones.
-- El bundle de graficos sigue generando un chunk grande y requiere una estrategia de carga diferida especifica.
+- La cobertura de componentes y de todos los flujos de presupuestos avanzados
+  aun puede ampliarse; los E2E existentes no cubren cada combinacion visual.
+- El chunk de graficos sigue siendo grande aunque ahora se carga diferidamente.
+
+El flujo de trabajo y las limitaciones de esta integracion se describen en el
+[README del repositorio](../../README.md). Las guias de `docs/operations`
+conservan los procedimientos necesarios para desplegar y mantener el sistema.

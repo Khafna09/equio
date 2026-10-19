@@ -1,0 +1,48 @@
+name: Encrypted database backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 8 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: vars.EQUIO_BACKUPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-backups
+    env:
+      PGHOST: ${{ secrets.BACKUP_PGHOST }}
+      PGPORT: '5432'
+      PGDATABASE: ${{ secrets.BACKUP_PGDATABASE }}
+      PGUSER: ${{ secrets.BACKUP_PGUSER }}
+      PGPASSWORD: ${{ secrets.BACKUP_PGPASSWORD }}
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: system
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install maintained PostgreSQL client and GnuPG
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common ca-certificates
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18 gnupg
+          command -v aws
+      - name: Encrypt and upload private backup
+        shell: pwsh
+        env:
+          PG_BIN: /usr/lib/postgresql/18/bin
+        run: ./backend/scripts/Backup-Database.ps1 -OutputDirectory "$env:RUNNER_TEMP/equio-backups" -UploadToR2

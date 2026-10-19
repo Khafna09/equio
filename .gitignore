@@ -9,4 +9,25 @@ dist/
 *.log
 *.pid
 *.hprof
+*.dump
+*.dump.gpg
+*.dump.gpg.sha256
 .vscode/
+playwright-report/
+test-results/
+
+# Local reports, plans and scratch work; project READMEs/runbooks stay versioned.
+/.local/
+/ADVANCED_MODE_IMPLEMENTATION_PLAN.md
+/BUDGET_FLOW_REVIEW.md
+/FIRST_DEPLOY_READINESS.md
+/INFRASTRUCTURE_PLAN.md
+/SECURITY_AUDIT.md
+
+# Generated verification artifacts and local tool state.
+coverage/
+.cache/
+*.tsbuildinfo
+*.tmp
+*.bak
+/equio_frontend/equio-login-check.png
