@@ -16,12 +16,13 @@ final class BudgetPolicy {
             throw new IllegalArgumentException("Every budget requires a start date");
         }
         if (fixed) {
-            LocalDate resolvedStart = retroactive ? startDate.withDayOfMonth(1) : startDate;
+            // An explicit range also describes monthly cycles starting on a custom day.
+            LocalDate resolvedStart = retroactive && endDate == null ? startDate.withDayOfMonth(1) : startDate;
             LocalDate resolvedEnd = endDate != null
                     ? endDate
                     : resolvedStart.plusMonths(1).minusDays(1);
-            if (retroactive) {
-                resolvedEnd = resolvedStart.plusMonths(1).minusDays(1);
+            if (resolvedEnd.isBefore(resolvedStart)) {
+                throw new IllegalArgumentException("The end date cannot be before the start date");
             }
             return new Period(resolvedStart, resolvedEnd);
         }
@@ -47,14 +48,22 @@ final class BudgetPolicy {
     }
 
     static BigDecimal assignableLimit(BigDecimal total, SavingsType type, BigDecimal value) {
+        return assignableLimit(total, type, value, BigDecimal.ZERO);
+    }
+
+    static BigDecimal assignableLimit(BigDecimal total, SavingsType type, BigDecimal value,
+                                      BigDecimal savingsPoolContribution) {
         if (total == null) {
             return BigDecimal.ZERO;
         }
+        BigDecimal poolContribution = savingsPoolContribution == null
+                ? BigDecimal.ZERO : savingsPoolContribution;
+        BigDecimal savingsBase = total.subtract(poolContribution).max(BigDecimal.ZERO);
         BigDecimal deduction = BigDecimal.ZERO;
         if (type == SavingsType.FIXED && value != null) {
             deduction = value;
         } else if (type == SavingsType.PERCENTAGE && value != null) {
-            deduction = total.multiply(value)
+            deduction = savingsBase.multiply(value)
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         }
         return total.subtract(deduction).max(BigDecimal.ZERO);

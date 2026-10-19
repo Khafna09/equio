@@ -1,5 +1,6 @@
 package com.equio.backend.budgets.dto.responses;
 
+import com.equio.backend.budgets.entities.enums.BudgetScope;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -8,6 +9,7 @@ import java.util.List;
 public record BudgetHistoryReportResponse(
         Long budgetId,
         String budgetName,
+        BudgetScope scope,
         LocalDate startDate,
         LocalDate endDate,
         BigDecimal totalAmount,

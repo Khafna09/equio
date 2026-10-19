@@ -2,6 +2,7 @@ package com.equio.backend.budgets.services;
 
 import com.equio.backend.budgets.entities.Budget;
 import com.equio.backend.budgets.entities.enums.BudgetStatus;
+import com.equio.backend.budgets.entities.enums.BudgetScope;
 import com.equio.backend.budgets.entities.enums.SavingsType;
 import com.equio.backend.budgets.repositories.BudgetRepository;
 import com.equio.backend.shared.exceptions.ReportTooLargeException;
@@ -33,6 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 
 class BudgetHistoryReportServiceTest {
 
@@ -103,12 +106,12 @@ class BudgetHistoryReportServiceTest {
         when(movementQueryService.countByPeriod(
                 1L,
                 LocalDate.of(2026, 8, 1).atStartOfDay(),
-                LocalDate.of(2026, 8, 31).atTime(23, 59, 59)))
+                LocalDate.of(2026, 8, 31).atTime(23, 59, 59, 999_999_000)))
                 .thenReturn(4L);
         when(movementQueryService.findByPeriod(
                 1L,
                 LocalDate.of(2026, 8, 1).atStartOfDay(),
-                LocalDate.of(2026, 8, 31).atTime(23, 59, 59)))
+                LocalDate.of(2026, 8, 31).atTime(23, 59, 59, 999_999_000)))
                 .thenReturn(movements);
 
         var report = service.getReport(1L, 10L);
@@ -137,14 +140,13 @@ class BudgetHistoryReportServiceTest {
         verify(rlsContext).setUserId(1L);
 
         ProfilePreferencesService profilePreferencesService = mock(ProfilePreferencesService.class);
-        RlsContext pdfRlsContext = mock(RlsContext.class);
         when(profilePreferencesService.findPreferences(1L))
                 .thenReturn(new ProfilePreferencesService.Preferences("es", "PEN"));
-        byte[] pdf = new BudgetHistoryPdfService(profilePreferencesService, pdfRlsContext).generate(1L, report);
+        byte[] pdf = new BudgetHistoryPdfService(profilePreferencesService).generate(1L, report);
 
         assertTrue(pdf.length > 5);
         assertEquals("%PDF-", new String(pdf, 0, 5, StandardCharsets.US_ASCII));
-        verify(pdfRlsContext).setUserId(1L);
+        verify(profilePreferencesService).findPreferences(1L);
         assertDoesNotThrow(() -> {
             try (var document = org.apache.pdfbox.Loader.loadPDF(pdf)) {
                 assertTrue(document.getNumberOfPages() >= 2);
@@ -164,6 +166,48 @@ class BudgetHistoryReportServiceTest {
     }
 
     @Test
+    void scopesIndependentReportsToTheirOwnCategory() {
+        User user = new User();
+        user.setId(1L);
+        Category food = new Category();
+        food.setId(5L);
+        food.setName("Food");
+        Category utilities = new Category();
+        utilities.setId(6L);
+        utilities.setName("Utilities");
+
+        Budget independent = new Budget();
+        independent.setId(25L);
+        independent.setName("Food plan");
+        independent.setUser(user);
+        independent.setCategory(food);
+        independent.setStatus(BudgetStatus.CLOSED);
+        independent.setStartDate(LocalDate.of(2026, 9, 1));
+        independent.setEndDate(LocalDate.of(2026, 9, 30));
+        independent.setTotalAmount(new BigDecimal("300.00"));
+
+        List<MovementSnapshot> movements = List.of(
+                movement(1L, MovementType.EXPENSE, "80.00", "Groceries", food, LocalDateTime.of(2026, 9, 5, 10, 0)),
+                movement(2L, MovementType.EXPENSE, "120.00", "Electricity", utilities, LocalDateTime.of(2026, 9, 6, 10, 0)),
+                movement(3L, MovementType.INCOME, "20.00", "Refund", food, LocalDateTime.of(2026, 9, 7, 10, 0)));
+
+        when(budgetRepository.findByIdAndUserId(25L, 1L)).thenReturn(Optional.of(independent));
+        when(budgetRepository.findByUserIdAndStatus(1L, BudgetStatus.CLOSED)).thenReturn(List.of(independent));
+        when(categoryLookupService.findByUser(1L)).thenReturn(List.of(category(food), category(utilities)));
+        when(movementQueryService.countByPeriod(anyLong(), any(), any())).thenReturn(3L);
+        when(movementQueryService.findByPeriod(anyLong(), any(), any())).thenReturn(movements);
+
+        var report = service.getReport(1L, 25L);
+
+        assertEquals(BudgetScope.INDEPENDENT_CATEGORY, report.scope());
+        assertEquals(new BigDecimal("80.00"), report.totalExpenses());
+        assertEquals(new BigDecimal("20.00"), report.totalIncome());
+        assertEquals(2, report.movements().size());
+        assertEquals(1, report.categories().size());
+        assertEquals(5L, report.categories().getFirst().categoryId());
+    }
+
+    @Test
     void rejectsReportsThatExceedTheConfiguredMovementLimit() {
         Budget closed = new Budget();
         closed.setId(30L);
@@ -175,7 +219,7 @@ class BudgetHistoryReportServiceTest {
         when(movementQueryService.countByPeriod(
                 1L,
                 LocalDate.of(2026, 1, 1).atStartOfDay(),
-                LocalDate.of(2026, 1, 31).atTime(23, 59, 59)))
+                LocalDate.of(2026, 1, 31).atTime(23, 59, 59, 999_999_000)))
                 .thenReturn(2001L);
 
         assertThrows(ReportTooLargeException.class, () -> service.getReport(1L, 30L));
@@ -196,7 +240,12 @@ class BudgetHistoryReportServiceTest {
                 category != null ? category.getId() : null,
                 category != null ? category.getName() : "Uncategorized",
                 category != null ? category.getColor() : "#a1a1aa",
-                category != null ? category.getIcon() : null);
+                category != null ? category.getIcon() : null,
+                description != null && description.startsWith("Aporte a meta:")
+                        ? com.equio.backend.transactions.entities.enums.MovementSource.GOAL_CONTRIBUTION
+                        : com.equio.backend.transactions.entities.enums.MovementSource.MANUAL,
+                null, description != null && description.startsWith("Aporte a meta:")
+                        ? description.substring("Aporte a meta:".length()).trim() : null);
     }
 
     private CategorySnapshot category(Category category) {

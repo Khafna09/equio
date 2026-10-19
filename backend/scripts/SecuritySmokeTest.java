@@ -7,7 +7,7 @@ import java.util.*;
 import java.util.regex.*;
 
 public class SecuritySmokeTest {
-    private static final String BASE = "http://localhost:8081/api/v1";
+    private static final String BASE = System.getenv().getOrDefault("TEST_API_BASE_URL", "http://localhost:8081/api/v1");
     private static final Pattern ACCESS_TOKEN =
             Pattern.compile("\"accessToken\":\"([^\"]+)\"");
     private static final Pattern ID =
@@ -158,7 +158,7 @@ public class SecuritySmokeTest {
                         + "\",\"lastName\":\"Audit\","
                         + "\"language\":\"es\"}",
                 Map.of("X-XSRF-TOKEN", authCsrf));
-        require(signup.status() == 201, "Sign-up failed: " + signup.body());
+        require(signup.status() == 202, "Sign-up failed: " + signup.body());
 
         Response signin = send(
                 "POST",
@@ -308,7 +308,7 @@ public class SecuritySmokeTest {
 
     private static Map<String, String> readEnv(Path path) throws Exception {
         Map<String, String> values = new HashMap<>();
-        for (String line : Files.readAllLines(path)) {
+        for (String line : Files.exists(path) ? Files.readAllLines(path) : List.<String>of()) {
             if (!line.isBlank() && !line.startsWith("#") && line.contains("=")) {
                 int separator = line.indexOf('=');
                 values.put(
@@ -317,6 +317,7 @@ public class SecuritySmokeTest {
                 );
             }
         }
+        values.putAll(System.getenv());
         return values;
     }
 

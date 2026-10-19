@@ -74,6 +74,16 @@ class ProductionSecurityValidatorTest {
     }
 
     @Test
+    void rejectsTlsVerificationBypass() {
+        var validator = validator(APP_URL + "&sslfactory=org.postgresql.ssl.NonValidatingFactory",
+                MIGRATION_URL, List.of("https://app.equio.example"), JWT_KEY, METADATA_KEY);
+        assertThrows(IllegalStateException.class, validator::validate);
+        validator = validator(APP_URL + "&sslhostnameverifier=custom.Verifier",
+                MIGRATION_URL, List.of("https://app.equio.example"), JWT_KEY, METADATA_KEY);
+        assertThrows(IllegalStateException.class, validator::validate);
+    }
+
+    @Test
     void rejectsEquivalentCryptographicKeys() {
         var validator = validator(
                 APP_URL,

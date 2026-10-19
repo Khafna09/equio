@@ -1,11 +1,18 @@
 package com.equio.backend.budgets.controllers;
 
 import com.equio.backend.budgets.dto.requests.BudgetRequest;
+import com.equio.backend.budgets.dto.requests.BudgetModeRequest;
 import com.equio.backend.budgets.dto.responses.BudgetResponse;
+import com.equio.backend.budgets.dto.responses.BudgetCapabilitiesResponse;
+import com.equio.backend.budgets.dto.responses.BudgetLinkPreviewResponse;
+import com.equio.backend.budgets.dto.responses.BudgetModeResponse;
 import com.equio.backend.budgets.dto.responses.BudgetHistoryReportResponse;
 import com.equio.backend.budgets.services.BudgetService;
 import com.equio.backend.budgets.services.BudgetHistoryReportService;
-import com.equio.backend.budgets.services.BudgetHistoryPdfService;
+import com.equio.backend.budgets.services.BudgetPdfDownloadService;
+import com.equio.backend.budgets.services.BudgetLinkService;
+import com.equio.backend.budgets.services.AdvancedBudgetAccessService;
+import com.equio.backend.budgets.services.BudgetModeService;
 import com.equio.backend.users.services.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -37,16 +44,25 @@ public class BudgetController {
     private final BudgetService budgetService;
     private final UserService userService;
     private final BudgetHistoryReportService budgetHistoryReportService;
-    private final BudgetHistoryPdfService budgetHistoryPdfService;
+    private final BudgetPdfDownloadService budgetPdfDownloadService;
+    private final BudgetLinkService budgetLinkService;
+    private final AdvancedBudgetAccessService advancedBudgetAccessService;
+    private final BudgetModeService budgetModeService;
 
     public BudgetController(BudgetService budgetService,
                             UserService userService,
                             BudgetHistoryReportService budgetHistoryReportService,
-                            BudgetHistoryPdfService budgetHistoryPdfService) {
+                            BudgetPdfDownloadService budgetPdfDownloadService,
+                            BudgetLinkService budgetLinkService,
+                            AdvancedBudgetAccessService advancedBudgetAccessService,
+                            BudgetModeService budgetModeService) {
         this.budgetService = budgetService;
         this.userService = userService;
         this.budgetHistoryReportService = budgetHistoryReportService;
-        this.budgetHistoryPdfService = budgetHistoryPdfService;
+        this.budgetPdfDownloadService = budgetPdfDownloadService;
+        this.budgetLinkService = budgetLinkService;
+        this.advancedBudgetAccessService = advancedBudgetAccessService;
+        this.budgetModeService = budgetModeService;
     }
 
     @Operation(
@@ -118,6 +134,62 @@ public class BudgetController {
     }
 
     @Operation(
+            summary = "Consultar capacidades de presupuestos",
+            description = "Indica si las operaciones del modo avanzado estan habilitadas por el servidor."
+    )
+    @GetMapping("/capabilities")
+    public ResponseEntity<BudgetCapabilitiesResponse> getCapabilities(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        userService.requireAuthenticated(userDetails.getUsername());
+        return ResponseEntity.ok(advancedBudgetAccessService.getCapabilities());
+    }
+
+    @Operation(
+            summary = "Cambiar modo de presupuestos",
+            description = "Persiste un unico modo por usuario. El modo normal exige resolver antes los presupuestos independientes activos."
+    )
+    @PutMapping("/mode")
+    public ResponseEntity<BudgetModeResponse> changeMode(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Valid @RequestBody BudgetModeRequest request) {
+        var user = userService.requireAuthenticated(userDetails.getUsername());
+        return ResponseEntity.ok(budgetModeService.changeMode(user.getId(), request.mode()));
+    }
+
+    @Operation(
+            summary = "Previsualizar vinculacion",
+            description = "Calcula el periodo, gasto asimilado y capacidad resultante sin modificar datos."
+    )
+    @GetMapping("/{id}/preview-link")
+    public ResponseEntity<BudgetLinkPreviewResponse> previewLink(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable @Positive Long id,
+            @RequestParam @Positive Long globalId) {
+        var user = userService.requireAuthenticated(userDetails.getUsername());
+        return ResponseEntity.ok(budgetLinkService.preview(user.getId(), globalId, id));
+    }
+
+    @Operation(summary = "Vincular presupuesto de categoria a un presupuesto global")
+    @PostMapping("/{globalId}/children/{budgetId}")
+    public ResponseEntity<BudgetResponse> linkBudget(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable @Positive Long globalId,
+            @PathVariable @Positive Long budgetId) {
+        var user = userService.requireAuthenticated(userDetails.getUsername());
+        return ResponseEntity.ok(budgetLinkService.link(user.getId(), globalId, budgetId));
+    }
+
+    @Operation(summary = "Convertir un presupuesto vinculado en independiente")
+    @DeleteMapping("/{globalId}/children/{budgetId}")
+    public ResponseEntity<BudgetResponse> detachBudget(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable @Positive Long globalId,
+            @PathVariable @Positive Long budgetId) {
+        var user = userService.requireAuthenticated(userDetails.getUsername());
+        return ResponseEntity.ok(budgetLinkService.detach(user.getId(), globalId, budgetId));
+    }
+
+    @Operation(
             summary = "Obtener reporte de un presupuesto cerrado",
             description = "Devuelve metricas consolidadas del ciclo y comparacion con el periodo anterior."
     )
@@ -140,8 +212,7 @@ public class BudgetController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable @Positive Long id) {
         var user = userService.requireAuthenticated(userDetails.getUsername());
-        BudgetHistoryReportResponse report = budgetHistoryReportService.getReport(user.getId(), id);
-        byte[] pdf = budgetHistoryPdfService.generate(user.getId(), report);
+        byte[] pdf = budgetPdfDownloadService.download(user.getId(), id);
         String disposition = ContentDisposition.attachment()
                 .filename("budget-report-" + id + ".pdf")
                 .build()

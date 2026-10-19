@@ -1,6 +1,7 @@
 package com.equio.backend.users.entities;
 
 import com.equio.backend.shared.entities.AuditableModel;
+import com.equio.backend.users.entities.enums.BudgetMode;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -39,6 +40,10 @@ public class Profile extends AuditableModel{
     @Column(name="time_format", nullable = false, length = 2)
     private String timeFormat = "24";
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "budget_mode", nullable = false, length = 20)
+    private BudgetMode budgetMode = BudgetMode.NORMAL;
+
     public String getLanguage() {
         return language != null ? language : "es";
     }
@@ -53,6 +58,10 @@ public class Profile extends AuditableModel{
 
     public String getTimeFormat() {
         return timeFormat != null ? timeFormat : "24";
+    }
+
+    public BudgetMode getBudgetMode() {
+        return budgetMode != null ? budgetMode : BudgetMode.NORMAL;
     }
 
     @OneToOne(fetch = FetchType.LAZY)

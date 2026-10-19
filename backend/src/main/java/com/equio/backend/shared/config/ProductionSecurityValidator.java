@@ -114,10 +114,17 @@ public class ProductionSecurityValidator {
         try {
             URI uri = URI.create(url.substring("jdbc:".length()));
             String query = uri.getRawQuery();
+            if (query != null && Arrays.stream(query.split("&"))
+                    .anyMatch(parameter -> parameter.split("=", 2)[0].contains("%"))) {
+                return false;
+            }
             return "postgresql".equalsIgnoreCase(uri.getScheme())
                     && uri.getHost() != null
                     && uri.getUserInfo() == null
                     && queryParameterEqualsOnce(query, "sslmode", "verify-full")
+                    && (!hasQueryParameter(query, "sslfactory") || queryParameterEqualsOnce(query,
+                        "sslfactory", "org.postgresql.ssl.DefaultJavaSSLFactory"))
+                    && !hasQueryParameter(query, "sslhostnameverifier")
                     && !hasQueryParameter(query, "user")
                     && !hasQueryParameter(query, "password");
         } catch (IllegalArgumentException exception) {
@@ -135,7 +142,7 @@ public class ProductionSecurityValidator {
         }
         List<String> values = Arrays.stream(query.split("&"))
                 .map(parameter -> parameter.split("=", 2))
-                .filter(parts -> parts[0].equalsIgnoreCase(expectedName))
+                .filter(parts -> parts[0].equals(expectedName))
                 .map(parts -> parts.length == 2 ? parts[1] : "")
                 .toList();
         return values.size() == 1

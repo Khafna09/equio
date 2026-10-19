@@ -5,12 +5,23 @@ spring:
     hikari:
       maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
       minimum-idle: ${DB_POOL_MIN_IDLE:0}
+      data-source-properties:
+        sslfactory: org.postgresql.ssl.DefaultJavaSSLFactory
+        connectTimeout: 10
+        socketTimeout: 30
+        cancelSignalTimeout: 5
+        tcpKeepAlive: true
+        options: "-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=30000"
   flyway:
     clean-disabled: true
     baseline-on-migrate: false
+    jdbc-properties:
+      sslfactory: org.postgresql.ssl.DefaultJavaSSLFactory
 
 server:
-  forward-headers-strategy: framework
+  forward-headers-strategy: native
+  tomcat:
+    redirect-context-root: false
 
 app:
   refresh-token:

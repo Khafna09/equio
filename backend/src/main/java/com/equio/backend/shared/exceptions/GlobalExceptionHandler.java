@@ -4,6 +4,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.*;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.transaction.TransactionTimedOutException;
 import org.springframework.http.*;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -74,8 +77,14 @@ public class GlobalExceptionHandler {
             ReportGenerationException exception,
             HttpServletRequest request
     ) {
-        LOGGER.error("Report generation failed requestId={}", MDC.get("requestId"), exception);
+        LOGGER.error("Report generation failed requestId={} type={}", MDC.get("requestId"), exception.getClass().getSimpleName());
         return response(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), request, null);
+    }
+
+    @ExceptionHandler(ReportBusyException.class)
+    ResponseEntity<Map<String, Object>> reportBusy(ReportBusyException exception, HttpServletRequest request) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request, 5L,
+                "REPORT_BUSY", Map.of());
     }
 
     @ExceptionHandler({
@@ -115,10 +124,25 @@ public class GlobalExceptionHandler {
             RuntimeException exception,
             HttpServletRequest request
     ) {
-        String message = exception instanceof BusinessConflictException
-                ? exception.getMessage()
-                : "The requested operation conflicts with the current state.";
-        return response(HttpStatus.CONFLICT, message, request, null);
+        if (exception instanceof BusinessConflictException conflict) {
+            return response(
+                    HttpStatus.CONFLICT,
+                    conflict.getMessage(),
+                    request,
+                    null,
+                    conflict.getCode(),
+                    conflict.getParams());
+        }
+        String code = exception instanceof ObjectOptimisticLockingFailureException
+                ? "CONCURRENT_MODIFICATION"
+                : "DATA_INTEGRITY_CONFLICT";
+        return response(
+                HttpStatus.CONFLICT,
+                "The requested operation conflicts with the current state.",
+                request,
+                null,
+                code,
+                Map.of());
     }
 
     @ExceptionHandler(Exception.class)
@@ -126,7 +150,7 @@ public class GlobalExceptionHandler {
             Exception exception,
             HttpServletRequest request
     ) {
-        LOGGER.error("Unhandled request failure requestId={}", MDC.get("requestId"), exception);
+        LOGGER.error("Unhandled request failure requestId={} type={}", MDC.get("requestId"), exception.getClass().getSimpleName());
         return response(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred.",
@@ -135,17 +159,39 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler({QueryTimeoutException.class, PessimisticLockingFailureException.class,
+            TransactionTimedOutException.class})
+    ResponseEntity<Map<String, Object>> timedOut(RuntimeException exception, HttpServletRequest request) {
+        LOGGER.warn("Database operation timed out requestId={} type={}", MDC.get("requestId"), exception.getClass().getSimpleName());
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "The operation could not complete in time.",
+                request, 3L, "OPERATION_TIMEOUT", Map.of());
+    }
+
     private ResponseEntity<Map<String, Object>> response(
             HttpStatus status,
             String message,
             HttpServletRequest request,
             Long retryAfter
     ) {
+        return response(status, message, request, retryAfter, defaultCode(status), Map.of());
+    }
+
+    private ResponseEntity<Map<String, Object>> response(
+            HttpStatus status,
+            String message,
+            HttpServletRequest request,
+            Long retryAfter,
+            String code,
+            Map<String, Object> params
+    ) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now());
         body.put("status", status.value());
         body.put("error", status.getReasonPhrase());
+        body.put("code", code);
         body.put("message", message);
+        body.put("params", params);
+        body.put("localized", false);
         body.put("path", request.getRequestURI());
         String requestId = MDC.get("requestId");
         if (requestId != null) {
@@ -159,5 +205,16 @@ public class GlobalExceptionHandler {
             builder.header("Retry-After", Long.toString(retryAfter));
         }
         return builder.body(body);
+    }
+
+    private String defaultCode(HttpStatus status) {
+        return switch (status) {
+            case BAD_REQUEST -> "INVALID_REQUEST";
+            case UNAUTHORIZED -> "UNAUTHORIZED";
+            case NOT_FOUND -> "RESOURCE_NOT_FOUND";
+            case TOO_MANY_REQUESTS -> "RATE_LIMITED";
+            case SERVICE_UNAVAILABLE -> "EXTERNAL_SERVICE_UNAVAILABLE";
+            default -> status.is5xxServerError() ? "INTERNAL_ERROR" : "REQUEST_FAILED";
+        };
     }
 }

@@ -9,7 +9,7 @@ import java.util.List;
 
 public record BudgetRequest(
         @Pattern(regexp = "^[^\\p{Cc}\\p{Cf}\\p{Cs}]*$", message = "must not contain control characters")
-        @NotBlank @Size(max = 100) String name,
+        @Size(max = 100) String name,
         @NotNull @Positive @Digits(integer = 10, fraction = 2) BigDecimal totalAmount,
         boolean isFixed,
         @NotNull LocalDate startDate,

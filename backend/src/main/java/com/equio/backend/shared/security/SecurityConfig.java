@@ -31,6 +31,7 @@ import java.util.Map;
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final RequestBodyLimitFilter requestBodyLimitFilter;
     private final RequestIdFilter requestIdFilter;
     private final UserDetailsService userDetailsService;
     private final JsonAuthenticationEntryPoint authenticationEntryPoint;
@@ -44,6 +45,7 @@ public class SecurityConfig {
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthFilter,
             RateLimitFilter rateLimitFilter,
+            RequestBodyLimitFilter requestBodyLimitFilter,
             RequestIdFilter requestIdFilter,
             UserDetailsService userDetailsService,
             JsonAuthenticationEntryPoint authenticationEntryPoint,
@@ -56,6 +58,7 @@ public class SecurityConfig {
     ) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.rateLimitFilter = rateLimitFilter;
+        this.requestBodyLimitFilter = requestBodyLimitFilter;
         this.requestIdFilter = requestIdFilter;
         this.userDetailsService = userDetailsService;
         this.authenticationEntryPoint = authenticationEntryPoint;
@@ -85,6 +88,7 @@ public class SecurityConfig {
                     auth.requestMatchers(
                             "/api/v1/auth/**",
                             "/actuator/health/liveness",
+                            "/actuator/health/readiness",
                             "/error"
                     ).permitAll();
                     if (swaggerPublic) {
@@ -113,9 +117,10 @@ public class SecurityConfig {
                                 "Permissions-Policy",
                                 "camera=(), microphone=(), geolocation=(), payment=()")))
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(requestIdFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(rateLimitFilter, RequestIdFilter.class)
-                .addFilterAfter(jwtAuthFilter, RateLimitFilter.class);
+                .addFilterBefore(requestBodyLimitFilter, org.springframework.security.web.csrf.CsrfFilter.class)
+                .addFilterBefore(rateLimitFilter, RequestBodyLimitFilter.class)
+                .addFilterBefore(requestIdFilter, RateLimitFilter.class)
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         if (requireHttps) {
             http.redirectToHttps(Customizer.withDefaults());
@@ -166,6 +171,12 @@ public class SecurityConfig {
     FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(
             RateLimitFilter filter
     ) {
+        return disabledContainerRegistration(filter);
+    }
+
+    @Bean
+    FilterRegistrationBean<RequestBodyLimitFilter> requestBodyLimitFilterRegistration(
+            RequestBodyLimitFilter filter) {
         return disabledContainerRegistration(filter);
     }
 

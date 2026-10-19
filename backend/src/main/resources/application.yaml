@@ -38,8 +38,19 @@ spring:
         jdbc:
           time_zone: UTC
   jackson:
+    factory:
+      constraints:
+        read:
+          max-nesting-depth: 16
+          max-document-length: ${HTTP_MAX_REQUEST_BYTES:32768}
+          max-token-count: 2048
+          max-number-length: 32
+          max-string-length: 4096
+          max-name-length: 64
     deserialization:
       fail-on-unknown-properties: true
+  transaction:
+    default-timeout: 30s
   servlet:
     multipart:
       max-file-size: 2MB
@@ -57,6 +68,10 @@ server:
     include-stacktrace: never
     include-exception: false
   tomcat:
+    # With Tomcat's default upload behavior this also bounds request-body reads.
+    connection-timeout: 10s
+    keep-alive-timeout: 15s
+    max-keep-alive-requests: 100
     max-http-form-post-size: 1MB
     max-swallow-size: 1MB
     threads:
@@ -70,6 +85,8 @@ server:
     mime-types: application/json,application/problem+json,text/plain,text/css,application/javascript,image/svg+xml
 
 app:
+  features:
+    advanced-budgets-enabled: ${ADVANCED_BUDGETS_ENABLED:true}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   jwt:
@@ -84,6 +101,7 @@ app:
     same-site: Strict
     domain: ${COOKIE_DOMAIN:}
   security:
+    max-request-bytes: ${HTTP_MAX_REQUEST_BYTES:32768}
     require-https: ${REQUIRE_HTTPS:false}
     swagger-public: ${SWAGGER_PUBLIC:true}
     bcrypt-strength: ${BCRYPT_STRENGTH:12}
@@ -100,8 +118,12 @@ app:
     access-key: ${UNSPLASH_ACCESS_KEY:}
   reports:
     max-movements: ${REPORT_MAX_MOVEMENTS:2000}
+    max-concurrent-pdfs: ${REPORT_MAX_CONCURRENT_PDFS:1}
   movements:
     max-query-results: ${MOVEMENT_QUERY_MAX_RESULTS:5000}
+  observability:
+    slow-request-ms: ${SLOW_REQUEST_MS:2000}
+    request-logging-enabled: ${HTTP_REQUEST_LOGS:true}
 
 springdoc:
   api-docs:
@@ -122,9 +144,13 @@ management:
       show-components: never
       probes:
         enabled: true
+      group:
+        readiness:
+          include: readinessState,db
 
 logging:
   level:
     root: INFO
     com.equio.backend: ${APP_LOG_LEVEL:INFO}
     org.springframework.security: WARN
+    org.hibernate.orm.jdbc.error: "OFF"

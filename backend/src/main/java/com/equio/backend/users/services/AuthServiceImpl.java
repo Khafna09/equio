@@ -62,7 +62,7 @@ public class AuthServiceImpl implements AuthService {
     public AuthenticatedSession authenticate(SignInRequest request, RequestMetadata metadata) {
         String email = request.email().trim().toLowerCase(Locale.ROOT);
         enforceLoginRateLimit(metadata.ipAddress(), email);
-        User user = userRepository.findByEmail(email).orElse(null);
+        User user = userRepository.findLockedByEmail(email).orElse(null);
 
         if (user == null) {
             passwordEncoder.matches(request.password(), dummyPasswordHash);
@@ -72,6 +72,7 @@ public class AuthServiceImpl implements AuthService {
         Instant now = Instant.now();
         if (!user.isEnabled()
                 || user.getLockedUntil() != null && user.getLockedUntil().isAfter(now)) {
+            passwordEncoder.matches(request.password(), dummyPasswordHash);
             throw invalidCredentials();
         }
 

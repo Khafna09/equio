@@ -1,113 +1,47 @@
 package com.equio.backend.budgets.services;
 
-import com.equio.backend.budgets.entities.Budget;
-import com.equio.backend.budgets.entities.enums.BudgetStatus;
-import com.equio.backend.budgets.repositories.BudgetRepository;
-import com.equio.backend.shared.jobs.DatabaseJobLock;
-import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.users.services.UserLookupService;
 import org.slf4j.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Service
+@ConditionalOnProperty(name = "app.jobs.budgets.enabled", havingValue = "true", matchIfMissing = true)
 public class BudgetScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(BudgetScheduler.class);
-    private static final long JOB_LOCK_ID = 1_001L;
-
-    private final BudgetRepository budgetRepository;
     private final UserLookupService userLookupService;
-    private final RlsContext rlsContext;
-    private final DatabaseJobLock jobLock;
+    private final BudgetCycleProcessor processor;
 
     public BudgetScheduler(
-            BudgetRepository budgetRepository,
             UserLookupService userLookupService,
-            RlsContext rlsContext,
-            DatabaseJobLock jobLock
+            BudgetCycleProcessor processor
     ) {
-        this.budgetRepository = budgetRepository;
         this.userLookupService = userLookupService;
-        this.rlsContext = rlsContext;
-        this.jobLock = jobLock;
+        this.processor = processor;
     }
 
-    @Scheduled(cron = "0 0 0 * * ?")
-    @Transactional
+    @EventListener(ApplicationReadyEvent.class)
+    @Scheduled(cron = "${app.jobs.budgets.cron:0 0 */6 * * *}")
     public void processExpiredBudgets() {
-        if (!jobLock.tryAcquire(JOB_LOCK_ID)) {
-            LOGGER.info("Expired budget processing skipped because another instance owns the job");
-            return;
-        }
         LocalDate today = LocalDate.now();
-        for (Long userId : userLookupService.findAllUserIds()) {
-            rlsContext.setUserId(userId);
-            var activeBudgets = budgetRepository
-                    .findByUserIdAndStatus(userId, BudgetStatus.ACTIVE)
-                    .stream()
-                    .filter(budget -> budget.getParentBudget() == null)
-                    .toList();
-
-            for (Budget budget : activeBudgets) {
-                if (budget.getEndDate() != null && budget.getEndDate().isBefore(today)) {
-                    closeBudgetTree(budget);
-                    budgetRepository.save(budget);
-                    if (budget.isFixed()) {
-                        renewBudgetTree(budget);
-                    }
+        long cursor = 0;
+        while (true) {
+            var userIds = userLookupService.findIdsAfter(cursor, 100);
+            if (userIds.isEmpty()) return;
+            for (Long userId : userIds) {
+                try {
+                    processor.processUser(userId, today);
+                } catch (RuntimeException exception) {
+                    LOGGER.error("budget_cycle_failed userId={} type={}", userId,
+                            exception.getClass().getSimpleName());
                 }
             }
+            cursor = userIds.getLast();
         }
-        LOGGER.info("Expired budget processing completed");
-    }
-
-    private void closeBudgetTree(Budget budget) {
-        budget.setStatus(BudgetStatus.CLOSED);
-        for (Budget child : budget.getSubBudgets()) {
-            if (child.getStatus() == BudgetStatus.ACTIVE) {
-                child.setStatus(BudgetStatus.CLOSED);
-                budgetRepository.save(child);
-            }
-        }
-    }
-
-    private void renewBudgetTree(Budget oldBudget) {
-        LocalDate newStartDate = oldBudget.getNextStartDate() != null
-                ? oldBudget.getNextStartDate()
-                : oldBudget.getEndDate().plusDays(1);
-        LocalDate newEndDate = newStartDate.plusMonths(1).minusDays(1);
-
-        Budget newBudget = copyForRenewal(oldBudget, newStartDate, newEndDate);
-        Budget savedNewBudget = budgetRepository.save(newBudget);
-
-        for (Budget oldChild : oldBudget.getSubBudgets()) {
-            Budget newChild = copyForRenewal(oldChild, newStartDate, newEndDate);
-            newChild.setParentBudget(savedNewBudget);
-            budgetRepository.save(newChild);
-        }
-    }
-
-    private Budget copyForRenewal(
-            Budget source,
-            LocalDate startDate,
-            LocalDate endDate
-    ) {
-        Budget target = new Budget();
-        target.setName(source.getName());
-        target.setTotalAmount(source.getTotalAmount());
-        target.setFixed(true);
-        target.setStartDate(startDate);
-        target.setEndDate(endDate);
-        target.setCategory(source.getCategory());
-        target.setUser(source.getUser());
-        target.setStatus(BudgetStatus.ACTIVE);
-        target.setSavingsType(source.getSavingsType());
-        target.setSavingsValue(source.getSavingsValue());
-        target.setSpentAmount(BigDecimal.ZERO);
-        return target;
     }
 }

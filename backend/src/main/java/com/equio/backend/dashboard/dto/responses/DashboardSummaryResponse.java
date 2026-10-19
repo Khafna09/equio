@@ -1,6 +1,8 @@
 package com.equio.backend.dashboard.dto.responses;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import com.equio.backend.dashboard.dto.DashboardPeriod;
 import java.util.List;
 
 public record DashboardSummaryResponse(
@@ -10,7 +12,12 @@ public record DashboardSummaryResponse(
         BigDecimal globalBudgetAmount,
         BigDecimal savingsDeduction,
         List<CategorySummary> expenseCategories,
-        List<CategorySummary> topCategories
+        List<CategorySummary> topCategories,
+        DashboardPeriod period,
+        LocalDate startDate,
+        LocalDate endDate,
+        boolean hasActiveBudget,
+        java.time.LocalDateTime accountingStartAt
 ) {
     public record CategorySummary(
             String categoryName,

@@ -1,5 +1,7 @@
 package com.equio.backend.users.dto.responses;
 
+import com.equio.backend.users.entities.enums.BudgetMode;
+
 public record ProfileResponse (
         Long id,
         String firstName,
@@ -7,6 +9,7 @@ public record ProfileResponse (
         String language,
         String currency,
         String theme,
-        String timeFormat
+        String timeFormat,
+        BudgetMode budgetMode
 ) {
 }

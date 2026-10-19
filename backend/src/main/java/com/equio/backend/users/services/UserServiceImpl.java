@@ -48,13 +48,14 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public User registerUser(SignUpRequest request) {
         String email = normalizeEmail(request.email());
+        String passwordHash = passwordEncoder.encode(request.password());
         if (userRepository.existsByEmail(email)) {
-            throw new BusinessConflictException("The email address is already registered.");
+            throw new BusinessConflictException("REGISTRATION_NOT_ACCEPTED", "Registration request processed.");
         }
 
         var user = new User();
         user.setEmail(email);
-        user.setPassword(passwordEncoder.encode(request.password()));
+        user.setPassword(passwordHash);
 
         var userRole = roleRepository.findByName(Roles.ROLE_USER)
                 .orElseGet(() -> roleRepository.save(new Role(Roles.ROLE_USER)));

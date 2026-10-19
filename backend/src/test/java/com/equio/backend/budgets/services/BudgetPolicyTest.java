@@ -10,6 +10,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class BudgetPolicyTest {
+    @Test
+    void savingsPoolContributionRemainsFullySpendable() {
+        assertEquals(new BigDecimal("1000.00"), BudgetPolicy.assignableLimit(
+                new BigDecimal("1100.00"), SavingsType.PERCENTAGE,
+                new BigDecimal("10"), new BigDecimal("100.00")));
+    }
 
     @Test
     void resolvesRetroactiveFixedPeriodToFullCalendarMonth() {
@@ -33,6 +39,20 @@ class BudgetPolicyTest {
     void rejectsInvalidDateRange() {
         assertThrows(IllegalArgumentException.class, () -> BudgetPolicy.resolvePeriod(
                 false, false, LocalDate.of(2026, 8, 16), LocalDate.of(2026, 8, 15)));
+    }
+
+    @Test
+    void preservesExplicitRetroactiveCycleStartingOnACustomDay() {
+        var period = BudgetPolicy.resolvePeriod(true, true,
+                LocalDate.of(2026, 8, 20), LocalDate.of(2026, 9, 19));
+        assertEquals(LocalDate.of(2026, 8, 20), period.startDate());
+        assertEquals(LocalDate.of(2026, 9, 19), period.endDate());
+    }
+
+    @Test
+    void rejectsInvalidMonthlyRange() {
+        assertThrows(IllegalArgumentException.class, () -> BudgetPolicy.resolvePeriod(
+                true, false, LocalDate.of(2026, 8, 16), LocalDate.of(2026, 8, 15)));
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.equio.backend.transactions.services;
 import com.equio.backend.transactions.entities.Category;
 import com.equio.backend.transactions.entities.Movement;
 import com.equio.backend.transactions.entities.enums.MovementType;
+import com.equio.backend.transactions.entities.enums.MovementSource;
 import com.equio.backend.transactions.repositories.MovementRepository;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -85,7 +86,8 @@ public class MovementQueryService {
                 category != null ? category.getId() : null,
                 category != null ? category.getName() : "Uncategorized",
                 category != null ? category.getColor() : "#a1a1aa",
-                category != null ? category.getIcon() : null
+                category != null ? category.getIcon() : null,
+                movement.getSource(), movement.getSourceGoalId(), movement.getSourceGoalName()
         );
     }
 
@@ -102,8 +104,17 @@ public class MovementQueryService {
             Long categoryId,
             String categoryName,
             String categoryColor,
-            String categoryIcon
+            String categoryIcon,
+            MovementSource source,
+            Long sourceGoalId,
+            String sourceGoalName
     ) {
+        public MovementSnapshot(Long id, BigDecimal amount, MovementType type, String description,
+                                LocalDateTime date, Long categoryId, String categoryName,
+                                String categoryColor, String categoryIcon) {
+            this(id, amount, type, description, date, categoryId, categoryName, categoryColor,
+                    categoryIcon, MovementSource.MANUAL, null, null);
+        }
     }
 
     public record CategoryExpenseSnapshot(

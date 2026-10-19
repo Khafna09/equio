@@ -27,4 +27,9 @@ public class UserLookupService {
     public List<Long> findAllUserIds() {
         return userRepository.findAllIds();
     }
+
+    @Transactional(readOnly = true)
+    public List<Long> findIdsAfter(long cursor, int pageSize) {
+        return userRepository.findIdsAfter(cursor, org.springframework.data.domain.PageRequest.of(0, pageSize));
+    }
 }

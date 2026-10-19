@@ -17,7 +17,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
-    private final UserService userService;
+    private final RegistrationService registrationService;
     private final AuthService authService;
     private final String refreshCookieName;
     private final boolean cookieSecure;
@@ -25,14 +25,14 @@ public class AuthController {
     private final String cookieDomain;
 
     public AuthController(
-            UserService userService,
+            RegistrationService registrationService,
             AuthService authService,
             @Value("${app.refresh-token.cookie-name}") String refreshCookieName,
             @Value("${app.refresh-token.cookie-secure}") boolean cookieSecure,
             @Value("${app.refresh-token.same-site}") String sameSite,
             @Value("${app.refresh-token.domain:}") String cookieDomain
     ) {
-        this.userService = userService;
+        this.registrationService = registrationService;
         this.authService = authService;
         this.refreshCookieName = refreshCookieName;
         this.cookieSecure = cookieSecure;
@@ -41,19 +41,11 @@ public class AuthController {
     }
 
     @PostMapping("/sign-up")
-    public ResponseEntity<UserResponse> signUp(@Valid @RequestBody SignUpRequest request) {
-        var user = userService.registerUser(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
+    public ResponseEntity<Map<String, String>> signUp(@Valid @RequestBody SignUpRequest request) {
+        registrationService.submit(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .cacheControl(CacheControl.noStore())
-                .body(new UserResponse(
-                        user.getId(),
-                        user.getEmail(),
-                        user.getProfile().getFirstName(),
-                        user.getProfile().getLastName(),
-                        user.getProfile().getLanguage(),
-                        user.getProfile().getCurrency(),
-                        user.getRoles().stream().map(role -> role.getName().name()).toList()
-                ));
+                .body(Map.of("message", "Registration request processed. Continue to sign in."));
     }
 
     @PostMapping("/sign-in")

@@ -3,6 +3,10 @@ package com.equio.backend.transactions.services;
 import com.equio.backend.shared.exceptions.BusinessConflictException;
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import com.equio.backend.shared.security.RlsContext;
+import com.equio.backend.shared.security.FinancialConcurrencyGuard;
+import com.equio.backend.shared.events.CategoryRemovalRequestedEvent;
+import com.equio.backend.transactions.repositories.MovementRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import com.equio.backend.transactions.dto.requests.CategoryRequest;
 import com.equio.backend.transactions.dto.responses.CategoryResponse;
 import com.equio.backend.transactions.entities.Category;
@@ -20,20 +24,30 @@ public class CategoryServiceImpl implements CategoryService {
     private final CategoryRepository categoryRepository;
     private final UserLookupService userLookupService;
     private final RlsContext rlsContext;
+    private final FinancialConcurrencyGuard guard;
+    private final MovementRepository movements;
+    private final ApplicationEventPublisher events;
 
     public CategoryServiceImpl(
             CategoryRepository categoryRepository,
             UserLookupService userLookupService,
-            RlsContext rlsContext
+            RlsContext rlsContext,
+            FinancialConcurrencyGuard guard,
+            MovementRepository movements,
+            ApplicationEventPublisher events
     ) {
         this.categoryRepository = categoryRepository;
         this.userLookupService = userLookupService;
         this.rlsContext = rlsContext;
+        this.guard = guard;
+        this.movements = movements;
+        this.events = events;
     }
 
     @Override
     @Transactional
     public CategoryResponse createCategory(Long userId, CategoryRequest request) {
+        guard.lock(userId);
         rlsContext.setUserId(userId);
         User user = userLookupService.requireUser(userId);
 
@@ -81,6 +95,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional
     public CategoryResponse updateCategory(Long userId, Long categoryId, CategoryRequest request) {
+        guard.lock(userId);
         rlsContext.setUserId(userId);
         Category category = findCategoryAndValidateOwner(userId, categoryId);
 
@@ -109,8 +124,13 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional
     public void deleteCategory(Long userId, Long categoryId) {
+        guard.lock(userId);
         rlsContext.setUserId(userId);
         Category category = findCategoryAndValidateOwner(userId, categoryId);
+        if (movements.existsByUserIdAndCategoryId(userId, categoryId)) {
+            throw new BusinessConflictException("CATEGORY_IN_USE", "A referenced category cannot be deleted.");
+        }
+        events.publishEvent(new CategoryRemovalRequestedEvent(userId, categoryId));
         categoryRepository.delete(category);
     }
 

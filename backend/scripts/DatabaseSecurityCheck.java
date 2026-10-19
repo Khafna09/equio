@@ -9,7 +9,7 @@ public class DatabaseSecurityCheck {
         String url = required(env, "DB_URL");
         String appUser = required(env, "DB_APP_USERNAME");
 
-        try (Connection admin = DriverManager.getConnection(
+        try (Connection admin = connect(
                 url,
                 required(env, "DB_MIGRATION_USERNAME"),
                 required(env, "DB_MIGRATION_PASSWORD"))) {
@@ -36,12 +36,14 @@ public class DatabaseSecurityCheck {
                                 "categories",
                                 "movements",
                                 "budgets",
-                                "saving_goals"
+                                "saving_goals",
+                                "savings_pools",
+                                "savings_pool_transactions"
                         });
                 rls.setArray(1, tables);
                 try (ResultSet result = rls.executeQuery()) {
                     result.next();
-                    require(result.getInt(1) == 4,
+                    require(result.getInt(1) == 6,
                             "RLS is not forced on all tenant tables");
                 }
             }
@@ -57,18 +59,22 @@ public class DatabaseSecurityCheck {
             }
         }
 
-        try (Connection application = DriverManager.getConnection(
+        try (Connection application = connect(
                 url,
                 appUser,
                 required(env, "DB_APP_PASSWORD"));
              Statement statement = application.createStatement()) {
+            try (ResultSet result = statement.executeQuery("select has_table_privilege(current_user, 'public.flyway_schema_history', 'UPDATE')")) {
+                result.next();
+                require(!result.getBoolean(1), "Runtime can alter Flyway history");
+            }
             statement.execute(
                     "select set_config('app.current_user_id', '-1', false)");
             for (String table : List.of(
                     "categories",
                     "movements",
                     "budgets",
-                    "saving_goals")) {
+                    "saving_goals", "savings_pools", "savings_pool_transactions")) {
                 try (ResultSet result = statement.executeQuery(
                         "select count(*) from " + table)) {
                     result.next();
@@ -88,9 +94,17 @@ public class DatabaseSecurityCheck {
         }
     }
 
+    private static Connection connect(String url, String user, String password) throws SQLException {
+        Properties properties = new Properties();
+        properties.setProperty("user", user);
+        properties.setProperty("password", password);
+        properties.setProperty("sslfactory", "org.postgresql.ssl.DefaultJavaSSLFactory");
+        return DriverManager.getConnection(url, properties);
+    }
+
     private static Map<String, String> readEnv(Path path) throws Exception {
         Map<String, String> values = new HashMap<>();
-        for (String line : Files.readAllLines(path)) {
+        for (String line : Files.exists(path) ? Files.readAllLines(path) : List.<String>of()) {
             if (!line.isBlank() && !line.startsWith("#") && line.contains("=")) {
                 int separator = line.indexOf('=');
                 values.put(
@@ -99,6 +113,7 @@ public class DatabaseSecurityCheck {
                 );
             }
         }
+        values.putAll(System.getenv());
         return values;
     }
 

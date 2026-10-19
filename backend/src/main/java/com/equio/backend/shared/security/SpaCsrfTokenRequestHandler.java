@@ -18,7 +18,10 @@ public final class SpaCsrfTokenRequestHandler implements CsrfTokenRequestHandler
             HttpServletResponse response,
             Supplier<CsrfToken> csrfToken
     ) {
-        xor.handle(request, response, csrfToken);
+        // The JSON bootstrap returns the plain header token, not an HTML XOR token.
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        if ("/api/v1/auth/csrf".equals(path)) plain.handle(request, response, csrfToken);
+        else xor.handle(request, response, csrfToken);
         csrfToken.get();
     }
 

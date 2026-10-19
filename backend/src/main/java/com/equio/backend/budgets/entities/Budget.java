@@ -13,6 +13,8 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,6 +46,9 @@ public class Budget extends AuditableModel {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal spentAmount = BigDecimal.ZERO;
 
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal savingsPoolContribution = BigDecimal.ZERO;
+
 
     @Column(nullable = false)
     private boolean isFixed = false;
@@ -57,6 +62,18 @@ public class Budget extends AuditableModel {
 
     @Column(nullable = true)
     private LocalDate nextStartDate;
+
+    private LocalDateTime accountingStartAt;
+
+    private LocalDateTime closedAt;
+
+    public LocalDateTime movementStart() {
+        return accountingStartAt != null ? accountingStartAt : startDate.atStartOfDay();
+    }
+
+    public LocalDateTime movementEnd() {
+        return closedAt != null ? closedAt : endDate.atTime(LocalTime.of(23, 59, 59, 999_999_000));
+    }
 
 
     @Enumerated(EnumType.STRING)

@@ -2,6 +2,8 @@ package com.equio.backend.savings.services;
 
 import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import com.equio.backend.shared.security.RlsContext;
+import com.equio.backend.shared.security.FinancialConcurrencyGuard;
+import com.equio.backend.shared.exceptions.BusinessConflictException;
 import com.equio.backend.budgets.entities.Budget;
 import com.equio.backend.budgets.services.BudgetLookupService;
 import com.equio.backend.savings.dto.requests.FundRequest;
@@ -30,22 +32,26 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     private final BudgetLookupService budgetLookupService;
     private final CreateMovementService createMovementService;
     private final RlsContext rlsContext;
+    private final FinancialConcurrencyGuard concurrencyGuard;
 
     public SavingGoalServiceImpl(SavingGoalRepository savingGoalRepository,
                                  UserLookupService userLookupService,
                                  BudgetLookupService budgetLookupService,
                                  CreateMovementService createMovementService,
-                                 RlsContext rlsContext) {
+                                 RlsContext rlsContext,
+                                 FinancialConcurrencyGuard concurrencyGuard) {
         this.savingGoalRepository = savingGoalRepository;
         this.userLookupService = userLookupService;
         this.budgetLookupService = budgetLookupService;
         this.createMovementService = createMovementService;
         this.rlsContext = rlsContext;
+        this.concurrencyGuard = concurrencyGuard;
     }
 
     @Override
     @Transactional
     public SavingGoalResponse create(Long userId, SavingGoalRequest request) {
+        concurrencyGuard.lock(userId);
         rlsContext.setUserId(userId);
         User user = userLookupService.requireUser(userId);
 
@@ -86,6 +92,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional
     public SavingGoalResponse update(Long userId, Long goalId, SavingGoalRequest request) {
+        concurrencyGuard.lock(userId);
         rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
         if (request.targetAmount().compareTo(goal.getCurrentAmount()) < 0) {
@@ -116,6 +123,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional
     public SavingGoalResponse addOrWithdrawFund(Long userId, Long goalId, FundRequest request) {
+        concurrencyGuard.lock(userId);
         rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
 
@@ -134,7 +142,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             }
             goal.setCurrentAmount(newAmount);
 
-            createMovementService.createMovement(userId, new CreateMovementRequest(
+            createMovementService.createGoalMovement(userId, goalId, goal.getName(), new CreateMovementRequest(
                     request.amount(),
                     MovementType.EXPENSE,
                     "Aporte a meta: " + goal.getName(),
@@ -149,7 +157,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             }
             goal.setCurrentAmount(goal.getCurrentAmount().subtract(request.amount()));
 
-            createMovementService.createMovement(userId, new CreateMovementRequest(
+            createMovementService.createGoalMovement(userId, goalId, goal.getName(), new CreateMovementRequest(
                     request.amount(),
                     MovementType.INCOME,
                     "Retiro de meta: " + goal.getName(),
@@ -166,8 +174,13 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional
     public void delete(Long userId, Long goalId) {
+        concurrencyGuard.lock(userId);
         rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
+        if (goal.getCurrentAmount().signum() > 0) {
+            throw new BusinessConflictException("GOAL_HAS_FUNDS",
+                    "Withdraw the remaining goal funds before deleting it.");
+        }
         savingGoalRepository.delete(goal);
     }
 

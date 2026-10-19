@@ -5,9 +5,7 @@ import com.equio.backend.budgets.services.BudgetHistoryPdfWriter.Metric;
 import com.equio.backend.budgets.services.BudgetHistoryPdfWriter.Tone;
 import com.equio.backend.shared.exceptions.ReportGenerationException;
 import com.equio.backend.users.services.ProfilePreferencesService;
-import com.equio.backend.shared.security.RlsContext;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -23,20 +21,19 @@ import java.util.Locale;
 public class BudgetHistoryPdfService {
 
     private final ProfilePreferencesService profilePreferencesService;
-    private final RlsContext rlsContext;
 
-    public BudgetHistoryPdfService(ProfilePreferencesService profilePreferencesService, RlsContext rlsContext) {
+    public BudgetHistoryPdfService(ProfilePreferencesService profilePreferencesService) {
         this.profilePreferencesService = profilePreferencesService;
-        this.rlsContext = rlsContext;
     }
 
-    @Transactional(readOnly = true)
     public byte[] generate(Long userId, BudgetHistoryReportResponse report) {
-        rlsContext.setUserId(userId);
         ProfilePreferencesService.Preferences preferences = profilePreferencesService.findPreferences(userId);
         boolean spanish = !"en".equalsIgnoreCase(preferences.language());
         String currency = preferences.currency();
-        String title = spanish ? "Reporte histórico de presupuesto" : "Budget history report";
+        boolean independent = report.scope() == com.equio.backend.budgets.entities.enums.BudgetScope.INDEPENDENT_CATEGORY;
+        String title = independent
+                ? (spanish ? "Reporte de presupuesto independiente" : "Independent budget report")
+                : (spanish ? "Reporte histórico de presupuesto" : "Budget history report");
         String period = formatDate(report.startDate(), spanish) + " - " + formatDate(report.endDate(), spanish);
         String status = report.successful()
                 ? (spanish ? "Cumplido con éxito" : "Completed successfully")
@@ -87,7 +84,9 @@ public class BudgetHistoryPdfService {
                     : "Income contributes to net balance, but does not automatically increase the budget limit.");
 
             writer.section(spanish ? "Consumo por categoría" : "Category consumption",
-                    spanish ? "Todas las categorías, incluso las que no tuvieron gastos." : "All categories, including those with no spending.");
+                    independent
+                            ? (spanish ? "Consumo de la categoría cubierta por este presupuesto." : "Spending in the category covered by this budget.")
+                            : (spanish ? "Todas las categorías, incluso las que no tuvieron gastos." : "All categories, including those with no spending."));
             if (report.categories().isEmpty()) {
                 writer.emptyState(spanish ? "No hubo consumo por categoría." : "There was no category consumption.");
             } else {

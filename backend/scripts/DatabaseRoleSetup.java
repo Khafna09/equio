@@ -19,8 +19,11 @@ public class DatabaseRoleSetup {
             throw new IllegalArgumentException("DB_APP_USERNAME is not a safe SQL identifier");
         }
 
-        try (Connection connection = DriverManager.getConnection(
-                url, adminUser, adminPassword)) {
+        Properties properties = new Properties();
+        properties.setProperty("user", adminUser);
+        properties.setProperty("password", adminPassword);
+        properties.setProperty("sslfactory", "org.postgresql.ssl.DefaultJavaSSLFactory");
+        try (Connection connection = DriverManager.getConnection(url, properties)) {
             connection.setAutoCommit(false);
             String quotedUser = quoteIdentifier(appUser);
             boolean exists;
@@ -35,24 +38,43 @@ public class DatabaseRoleSetup {
                 if (!exists) {
                     statement.execute("create role " + quotedUser
                             + " login password '" + escapedPassword
-                            + "' nosuperuser nocreatedb nocreaterole noreplication");
+                            + "' nosuperuser nocreatedb nocreaterole noreplication nobypassrls");
                 } else {
                     statement.execute("alter role " + quotedUser
                             + " with login password '" + escapedPassword
-                            + "' nosuperuser nocreatedb nocreaterole noreplication");
+                            + "' nosuperuser nocreatedb nocreaterole noreplication nobypassrls");
                 }
                 statement.execute("revoke create on schema public from public");
                 statement.execute("grant connect on database "
                         + quoteIdentifier(connection.getCatalog()) + " to " + quotedUser);
                 statement.execute("grant usage on schema public to " + quotedUser);
-                statement.execute("grant select, insert, update, delete "
-                        + "on all tables in schema public to " + quotedUser);
+                for (String table : List.of("users", "role", "user_roles", "profiles", "refresh_token_sessions",
+                        "categories", "movements", "budgets", "saving_goals", "savings_pools", "savings_pool_transactions")) {
+                    boolean tableExists;
+                    try (PreparedStatement check = connection.prepareStatement("select to_regclass(?) is not null")) {
+                        check.setString(1, "public." + table);
+                        try (ResultSet result = check.executeQuery()) {
+                            result.next();
+                            tableExists = result.getBoolean(1);
+                        }
+                    }
+                    if (tableExists) statement.execute("grant select, insert, update, delete on table public."
+                            + quoteIdentifier(table) + " to " + quotedUser);
+                }
                 statement.execute("grant usage, select "
                         + "on all sequences in schema public to " + quotedUser);
                 statement.execute("alter default privileges in schema public "
-                        + "grant select, insert, update, delete on tables to " + quotedUser);
+                        + "revoke all on tables from " + quotedUser);
                 statement.execute("alter default privileges in schema public "
-                        + "grant usage, select on sequences to " + quotedUser);
+                        + "revoke all on sequences from " + quotedUser);
+                try (ResultSet result = statement.executeQuery("select to_regclass('public.flyway_schema_history') is not null")) {
+                    result.next();
+                    if (result.getBoolean(1)) {
+                        try (Statement revoke = connection.createStatement()) {
+                            revoke.execute("revoke all on table public.flyway_schema_history from " + quotedUser);
+                        }
+                    }
+                }
             }
             connection.commit();
         }
@@ -61,7 +83,7 @@ public class DatabaseRoleSetup {
 
     private static Map<String, String> readEnv(Path path) throws Exception {
         Map<String, String> values = new HashMap<>();
-        for (String line : Files.readAllLines(path)) {
+        for (String line : Files.exists(path) ? Files.readAllLines(path) : List.<String>of()) {
             String value = line.trim();
             if (value.isEmpty() || value.startsWith("#") || !value.contains("=")) {
                 continue;
@@ -69,6 +91,7 @@ public class DatabaseRoleSetup {
             int separator = value.indexOf('=');
             values.put(value.substring(0, separator), value.substring(separator + 1));
         }
+        values.putAll(System.getenv());
         return values;
     }
 

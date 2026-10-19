@@ -2,7 +2,9 @@ package com.equio.backend.transactions.controllers;
 
 import com.equio.backend.transactions.dto.requests.CreateMovementRequest;
 import com.equio.backend.transactions.dto.responses.MovementResponse;
+import com.equio.backend.transactions.dto.responses.MovementPageResponse;
 import com.equio.backend.transactions.services.CreateMovementService;
+import com.equio.backend.transactions.services.MovementReadService;
 import com.equio.backend.users.services.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -12,6 +14,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,10 +35,13 @@ public class MovementController {
 
     private final CreateMovementService movementService;
     private final UserService userService;
+    private final MovementReadService movementReadService;
 
-    public MovementController(CreateMovementService movementService, UserService userService) {
+    public MovementController(CreateMovementService movementService, UserService userService,
+            MovementReadService movementReadService) {
         this.movementService = movementService;
         this.userService = userService;
+        this.movementReadService = movementReadService;
     }
 
     @Operation(summary = "Registrar un movimiento", description = "Crea un nuevo ingreso o gasto asociado al usuario autenticado")
@@ -63,9 +70,10 @@ public class MovementController {
             @RequestParam(required = false) @Pattern(regexp = "(?i)INCOME|EXPENSE") String type,
             @RequestParam(required = false) @Positive Long categoryId,
             @RequestParam(required = false) LocalDate startDate,
-            @RequestParam(required = false) LocalDate endDate) {
+            @RequestParam(required = false) LocalDate endDate,
+            @RequestParam(required = false) java.time.LocalDateTime startAt) {
         var user = userService.requireAuthenticated(userDetails.getUsername());
-        return ResponseEntity.ok(movementService.getAllByFilters(user.getId(), type, categoryId, startDate, endDate));
+        return ResponseEntity.ok(movementService.getAllByFilters(user.getId(), type, categoryId, startDate, endDate, startAt));
     }
 
     @Operation(summary = "Obtener movimiento por ID", description = "Devuelve el detalle de un movimiento específico")
@@ -80,6 +88,31 @@ public class MovementController {
             @PathVariable @Positive Long id) {
         var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(movementService.getById(user.getId(), id));
+    }
+
+    @Operation(summary = "Paginar movimientos", description = "Orden fecha/id descendente, cursor exclusivo y máximo 100 elementos. No calcula total ni acepta propietario del cliente.")
+    @GetMapping("/page")
+    public ResponseEntity<MovementPageResponse> getPage(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(required = false) @Pattern(regexp = "(?i)INCOME|EXPENSE") String type,
+            @RequestParam(required = false) @Positive Long categoryId,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate,
+            @RequestParam(required = false) java.time.LocalDateTime startAt,
+            @RequestParam(required = false) java.time.LocalDateTime beforeDate,
+            @RequestParam(required = false) @Positive Long beforeId,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        var user = userService.requireAuthenticated(userDetails.getUsername());
+        return ResponseEntity.ok(movementReadService.findPage(user.getId(), type, categoryId,
+                startDate, endDate, startAt, beforeDate, beforeId, size));
+    }
+
+    @Operation(summary = "Días con movimientos", description = "Fechas distintas para el calendario; rango obligatorio de máximo 62 días, sin movimientos ni importes.")
+    @GetMapping("/dates")
+    public ResponseEntity<List<LocalDate>> getDates(@AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam LocalDate startDate, @RequestParam LocalDate endDate) {
+        var user = userService.requireAuthenticated(userDetails.getUsername());
+        return ResponseEntity.ok(movementReadService.findDates(user.getId(), startDate, endDate));
     }
 
     @Operation(summary = "Actualizar movimiento", description = "Actualiza los datos de un ingreso o gasto existente")
