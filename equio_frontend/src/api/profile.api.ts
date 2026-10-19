@@ -7,14 +7,17 @@ export interface ProfileResponse {
   language: string;
   currency: string;
   theme: string;
+  timeFormat: '12' | '24';
+  budgetMode: 'NORMAL' | 'ADVANCED';
 }
 
 export interface ProfileRequest {
-  firstName: string;
-  lastName: string;
-  language: string;
-  currency: string;
-  theme: string;
+  firstName?: string;
+  lastName?: string;
+  language?: 'es' | 'en';
+  currency?: string;
+  theme?: 'light' | 'dark' | 'system';
+  timeFormat?: '12' | '24';
 }
 
 export const profileApi = {

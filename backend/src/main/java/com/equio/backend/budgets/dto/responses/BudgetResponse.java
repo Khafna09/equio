@@ -1,6 +1,7 @@
 package com.equio.backend.budgets.dto.responses;
 
 import com.equio.backend.budgets.entities.enums.SavingsType;
+import com.equio.backend.budgets.entities.enums.BudgetScope;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -15,8 +16,8 @@ public record BudgetResponse(
         String name,
         BigDecimal totalAmount,
         BigDecimal spentAmount,
-        BigDecimal remainingAmount,       // totalAmount - spentAmount (calculado)
-        double progressPercentage,        // (spentAmount / totalAmount) * 100 (calculado)
+        BigDecimal remainingAmount,
+        double progressPercentage,
         boolean isFixed,
         LocalDate startDate,
         LocalDate endDate,
@@ -25,10 +26,18 @@ public record BudgetResponse(
         String categoryColor,
         String categoryIcon,
         Long parentBudgetId,
+        BudgetScope scope,
         String status,
         SavingsType savingsType,
         BigDecimal savingsValue,
-        boolean isOverBudget,             // true si spentAmount >= totalAmount
+        BigDecimal savingsPoolContribution,
+        BigDecimal assignableAmount,
+        BigDecimal allocatedAmount,
+        BigDecimal unallocatedAmount,
+        boolean canLink,
+        boolean canDetach,
+        boolean canClose,
+        boolean isOverBudget,
         LocalDateTime createdAt,
-        LocalDate nextStartDate           // Nueva fecha de inicio programada (BR-4.4)
+        LocalDate nextStartDate
 ) {}

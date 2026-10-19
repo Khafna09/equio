@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useI18n } from "../../i18n/i18nContextValue";
 
 interface CountUpProps {
   to: number;
@@ -21,6 +22,7 @@ export function CountUp({
   suffix = "",
   onEnd,
 }: CountUpProps) {
+  const { language } = useI18n();
   const [count, setCount] = useState(from);
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export function CountUp({
     return () => cancelAnimationFrame(animationFrame);
   }, [to, from, duration, onEnd]);
 
-  const formattedValue = new Intl.NumberFormat("es-MX", {
+  const formattedValue = new Intl.NumberFormat(language === "es" ? "es-PE" : "en-US", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(count);

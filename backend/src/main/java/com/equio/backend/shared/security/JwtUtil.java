@@ -1,74 +1,85 @@
 package com.equio.backend.shared.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.time.Instant;
 import java.util.Date;
-import java.util.function.Function;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
-
-    private final String secretKey;
+    private final SecretKey signingKey;
     private final long expirationMs;
+    private final String issuer;
+    private final String audience;
 
     public JwtUtil(
-            @Value("${app.jwt.secret}") String secretKey,
-            @Value("${app.jwt.expiration-ms}") long expirationMs
+            @Value("${app.jwt.secret-base64}") String secretBase64,
+            @Value("${app.jwt.access-expiration-ms}") long expirationMs,
+            @Value("${app.jwt.issuer}") String issuer,
+            @Value("${app.jwt.audience}") String audience
     ) {
-        this.secretKey = secretKey;
+        byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(secretBase64);
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("JWT_SECRET_BASE64 must contain valid Base64", exception);
+        }
+        if (keyBytes.length < 32) {
+            throw new IllegalStateException("JWT signing key must contain at least 256 bits");
+        }
+        if (expirationMs < 60_000 || expirationMs > 3_600_000) {
+            throw new IllegalStateException("Access token expiration must be between 1 and 60 minutes");
+        }
+        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
         this.expirationMs = expirationMs;
+        this.issuer = issuer;
+        this.audience = audience;
     }
 
-    private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(secretKey.getBytes());
-    }
-
-    public String extractUsername(String token) {
-        return extractClaim(token, Claims::getSubject);
-    }
-
-    public Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
-    }
-
-    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = extractAllClaims(token);
-        return claimsResolver.apply(claims);
-    }
-
-    private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-    }
-
-    private Boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
-    }
-
-    public String generateToken(UserDetails userDetails) {
-        return createToken(userDetails.getUsername());
-    }
-
-    private String createToken(String subject) {
+    public String generateAccessToken(UserDetails userDetails) {
+        Instant now = Instant.now();
         return Jwts.builder()
-                .subject(subject)
-                .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + expirationMs))
-                .signWith(getSigningKey())
+                .subject(userDetails.getUsername())
+                .issuer(issuer)
+                .audience().add(audience).and()
+                .id(UUID.randomUUID().toString())
+                .claim("type", "access")
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(expirationMs)))
+                .signWith(signingKey)
                 .compact();
     }
 
-    public Boolean validateToken(String token, UserDetails userDetails) {
-        final String username = extractUsername(token);
-        return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+    public String extractUsername(String token) {
+        return parse(token).getSubject();
+    }
+
+    public boolean validateAccessToken(String token, UserDetails userDetails) {
+        Claims claims = parse(token);
+        return userDetails.isEnabled()
+                && userDetails.isAccountNonLocked()
+                && userDetails.getUsername().equals(claims.getSubject())
+                && "access".equals(claims.get("type", String.class));
+    }
+
+    public long getExpirationSeconds() {
+        return expirationMs / 1000;
+    }
+
+    private Claims parse(String token) {
+        return Jwts.parser()
+                .verifyWith(signingKey)
+                .requireIssuer(issuer)
+                .requireAudience(audience)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 }

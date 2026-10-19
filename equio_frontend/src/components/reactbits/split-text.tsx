@@ -46,8 +46,9 @@ export function SplitText({ text, className = "", delay = 0 }: SplitTextProps) {
       animate="visible"
       className={className}
     >
+      <span className="sr-only">{text}</span>
       {letters.map((letter, index) => (
-        <motion.span variants={child} key={index}>
+        <motion.span variants={child} key={index} aria-hidden="true">
           {letter === " " ? "\u00A0" : letter}
         </motion.span>
       ))}

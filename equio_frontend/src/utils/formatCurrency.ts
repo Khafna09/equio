@@ -34,7 +34,7 @@ export function formatCurrency(
       maximumFractionDigits: options?.maximumFractionDigits ?? 2,
       minimumFractionDigits: options?.minimumFractionDigits ?? (options?.maximumFractionDigits === 0 ? 0 : 2)
     }).format(value);
-  } catch (e) {
+  } catch {
     return `${getCurrencySymbol(currency)} ${value.toFixed(2)}`;
   }
 }

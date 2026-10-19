@@ -11,6 +11,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
+@Validated
 @RequestMapping("/api/v1/savings")
 @Tag(name = "Savings", description = "Endpoints para gestión de metas de ahorro")
 @SecurityRequirement(name = "Bearer Authentication")
@@ -61,7 +64,7 @@ public class SavingGoalController {
     public ResponseEntity<SavingGoalResponse> create(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody SavingGoalRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED).body(savingGoalService.create(user.getId(), request));
     }
 
@@ -76,7 +79,7 @@ public class SavingGoalController {
     @GetMapping
     public ResponseEntity<List<SavingGoalResponse>> getAll(
             @AuthenticationPrincipal UserDetails userDetails) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(savingGoalService.getAllByUser(user.getId()));
     }
 
@@ -92,8 +95,8 @@ public class SavingGoalController {
     @GetMapping("/{id}")
     public ResponseEntity<SavingGoalResponse> getById(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+            @PathVariable @Positive Long id) {
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(savingGoalService.getById(user.getId(), id));
     }
 
@@ -122,9 +125,9 @@ public class SavingGoalController {
     @PutMapping("/{id}")
     public ResponseEntity<SavingGoalResponse> update(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody SavingGoalRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(savingGoalService.update(user.getId(), id, request));
     }
 
@@ -156,9 +159,9 @@ public class SavingGoalController {
     @PostMapping("/{id}/fund")
     public ResponseEntity<SavingGoalResponse> fund(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody FundRequest request) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         return ResponseEntity.ok(savingGoalService.addOrWithdrawFund(user.getId(), id, request));
     }
 
@@ -174,8 +177,8 @@ public class SavingGoalController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long id) {
-        var user = userService.findByEmail(userDetails.getUsername()).orElseThrow();
+            @PathVariable @Positive Long id) {
+        var user = userService.requireAuthenticated(userDetails.getUsername());
         savingGoalService.delete(user.getId(), id);
         return ResponseEntity.noContent().build();
     }

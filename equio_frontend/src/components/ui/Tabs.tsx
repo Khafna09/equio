@@ -16,7 +16,7 @@ function Tabs({
   )
 }
 
-function TabsList({ className, variant = "default", ...props }: TabsPrimitive.List.Props & { variant?: string }) {
+function TabsList({ className, ...props }: TabsPrimitive.List.Props) {
   return (
     <TabsPrimitive.List
       data-slot="tabs-list"

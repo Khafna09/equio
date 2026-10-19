@@ -1,25 +1,36 @@
 import { useState } from 'react';
 import { useSavings } from '../../hooks/useSavings';
+import { useBudgets } from '../../hooks/useBudgets';
 import { Card } from '../../components/ui/Card';
 import { MagicCard } from '../../components/ui/magic-card';
 import { Button } from '../../components/ui/Button';
 import { SavingGoalModal } from './SavingGoalModal';
 import { EditGoalModal } from './EditGoalModal';
 import { FundModal } from './FundModal';
-import { Plus, ShieldCheck, MoreHorizontal } from 'lucide-react';
+import { ArrowRightLeft, MoreHorizontal, PiggyBank, Plus, ShieldCheck, Target } from 'lucide-react';
 import type { SavingGoalResponse } from '../../types/saving.types';
 import { format } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import { useSharedElementModal } from '../../hooks/useSharedElementModal';
 import { useCurrency } from '../../hooks/useCurrency';
 import { getDeterministicFallbackImage } from '../../utils/unsplash';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { SavingsPoolTransferModal } from './SavingsPoolTransferModal';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useSavingsPool } from '../../hooks/useSavingsPool';
 
 export function SavingsPage() {
   const { savings, isLoading } = useSavings();
+  const {
+    savingsPool, isLoading: isPoolLoading, isTransferPending,
+    transferPoolToGoal, transferPoolToBudget,
+  } = useSavingsPool();
+  const { budgets } = useBudgets();
   const { triggerRect, captureTrigger } = useSharedElementModal();
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<SavingGoalResponse | null>(null);
+  const [balanceView, setBalanceView] = useState<'goals' | 'pool'>('goals');
+  const [isPoolModalOpen, setIsPoolModalOpen] = useState(false);
 
   const [fundModalState, setFundModalState] = useState<{ isOpen: boolean; goal: SavingGoalResponse | null; operation: 'ADD' | 'WITHDRAW' }>({
     isOpen: false,
@@ -44,32 +55,74 @@ export function SavingsPage() {
         </div>
       </div>
       <div className="flex flex-col lg:flex-row gap-6">
-        <Card className="flex-1 p-6 md:p-8 bg-white dark:bg-neutral-800 border-none shadow-sm rounded-[2rem] flex flex-col md:flex-row items-center gap-8">
+        <Card className="flex-1 min-h-[230px] p-6 md:p-8 bg-white dark:bg-neutral-800 border-none shadow-sm rounded-[2rem] flex flex-col justify-center">
+          <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={balanceView}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="flex w-full flex-col items-center gap-8 md:flex-row"
+          >
           <div className="flex flex-col items-center justify-center text-center w-full md:w-auto shrink-0">
-            <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-950/40 rounded-full flex items-center justify-center mb-3">
-              <ShieldCheck className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-3 ${balanceView === 'pool' ? 'bg-primary-50 dark:bg-primary-950/40' : 'bg-emerald-50 dark:bg-emerald-950/40'}`}>
+              {balanceView === 'pool'
+                ? <PiggyBank className="w-10 h-10 text-primary-600 dark:text-primary-400" />
+                : <ShieldCheck className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />}
             </div>
-            <h3 className="text-lg font-bold text-neutral-900 dark:text-white leading-tight whitespace-pre-line">{t('savings.globalBalance').split(' ').join('\n')}</h3>
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white leading-tight min-h-[44px] flex items-center justify-center">
+              {balanceView === 'pool' ? t('savings.poolTitle') : t('savings.globalBalance')}
+            </h3>
           </div>
 
           <div className="flex-1 w-full flex flex-col justify-center">
-            <div className="flex justify-between items-end mb-2">
+            <div className="mb-5 h-8 flex items-center justify-end">
+              {(savingsPool.balance > 0 || balanceView === 'pool') && (
+                <div className="inline-flex rounded-xl bg-neutral-100 dark:bg-neutral-900 p-1">
+                  <button type="button" onClick={() => setBalanceView('goals')} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${balanceView === 'goals' ? 'bg-white dark:bg-neutral-700 text-emerald-700 dark:text-emerald-300 shadow-sm' : 'text-neutral-500'}`}>
+                    <Target className="h-4 w-4" /> {t('savings.goalsBalance')}
+                  </button>
+                  <button type="button" onClick={() => setBalanceView('pool')} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${balanceView === 'pool' ? 'bg-white dark:bg-neutral-700 text-primary-700 dark:text-primary-300 shadow-sm' : 'text-neutral-500'}`}>
+                    <PiggyBank className="h-4 w-4" /> {t('savings.poolShort')}
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-between items-end mb-2 min-h-[44px]">
               <div>
                 <p className="text-xs font-semibold text-neutral-400 mb-0.5">{t('savings.currentBalance')}</p>
-                <p className="text-4xl font-bold text-neutral-900 dark:text-white">{formatCurrency(totalSaved)}</p>
+                <p className="text-4xl font-bold text-neutral-900 dark:text-white leading-none">
+                  {isPoolLoading && balanceView === 'pool' ? '...' : formatCurrency(balanceView === 'pool' ? savingsPool.balance : totalSaved)}
+                </p>
               </div>
-              <div className="text-right">
-                <p className="text-xs font-semibold text-neutral-400 mb-0.5">{t('savings.goal')}</p>
-                <p className="text-2xl font-bold text-neutral-900 dark:text-white">{formatCurrency(totalTarget)}</p>
+              <div className="text-right h-10 flex items-end justify-end">
+                {balanceView === 'goals' ? (
+                  <div className="flex flex-col justify-end">
+                    <p className="text-xs font-semibold text-neutral-400 mb-0.5">{t('savings.goal')}</p>
+                    <p className="text-2xl font-bold text-neutral-900 dark:text-white leading-none">{formatCurrency(totalTarget)}</p>
+                  </div>
+                ) : savingsPool.balance > 0 ? (
+                  <Button variant="primary" className="rounded-xl h-9 text-xs font-semibold px-3.5" onClick={() => setIsPoolModalOpen(true)}>
+                    <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" /> {t('savings.poolUseFunds')}
+                  </Button>
+                ) : (
+                  <div className="h-9" />
+                )}
               </div>
             </div>
-            <div className="w-full h-3 bg-emerald-50 dark:bg-neutral-700/80 rounded-full overflow-hidden mt-4 border border-transparent dark:border-neutral-600/40">
-              <div
-                className="h-full bg-emerald-400 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(totalProgress, 100)}%` }}
-              />
+            <div className="mt-4 h-6 flex items-center">
+              {balanceView === 'goals' ? (
+                <div className="w-full h-3 bg-emerald-50 dark:bg-neutral-700/80 rounded-full overflow-hidden border border-transparent dark:border-neutral-600/40">
+                  <div className="h-full bg-emerald-400 rounded-full transition-all duration-500" style={{ width: `${Math.min(totalProgress, 100)}%` }} />
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate w-full">{t('savings.poolDescription')}</p>
+              )}
             </div>
           </div>
+          </motion.div>
+          </AnimatePresence>
         </Card>
 
         <div className="lg:w-[350px] shrink-0 border-2 border-dashed border-primary-200 dark:border-primary-800 bg-primary-50/30 dark:bg-primary-950/20 rounded-[2rem] p-8 flex flex-col justify-center">
@@ -90,7 +143,6 @@ export function SavingsPage() {
         </div>
       </div>
 
-      {/* Grid de Metas */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {isLoading ? (
           <div className="col-span-full py-12 text-center text-neutral-500 dark:text-neutral-400 animate-pulse">
@@ -159,6 +211,7 @@ export function SavingsPage() {
                       <div className="flex items-center gap-2">
                         <Button
                           variant="primary"
+                          data-contribution-goal-id={goal.id}
                           className="flex-1 rounded-2xl py-2.5 bg-primary-600 hover:bg-primary-700 font-semibold text-xs"
                           onClick={(e) => {
                             captureTrigger(e);
@@ -206,6 +259,16 @@ export function SavingsPage() {
         goal={fundModalState.goal}
         operation={fundModalState.operation}
         triggerRect={triggerRect}
+      />
+      <SavingsPoolTransferModal
+        isOpen={isPoolModalOpen}
+        onClose={() => setIsPoolModalOpen(false)}
+        balance={savingsPool.balance}
+        goals={savings}
+        budgets={budgets}
+        isProcessing={isTransferPending}
+        onTransferToGoal={transferPoolToGoal}
+        onTransferToBudget={transferPoolToBudget}
       />
     </div>
   );

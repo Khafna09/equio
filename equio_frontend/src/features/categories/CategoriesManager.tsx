@@ -5,13 +5,15 @@ import { Trash2, Pencil, Plus } from 'lucide-react';
 import { NewCategoryModal } from './NewCategoryModal';
 import type { CategoryResponse } from '../../types/category.types';
 import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 export function CategoriesManager() {
   const { categories, isLoading, deleteCategory } = useCategories();
   const { t } = useI18n();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [categoryToEdit, setCategoryToEdit] = useState<CategoryResponse | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   if (isLoading) {
     return <div className="p-4 text-neutral-500 dark:text-neutral-400">{t('categories.loading')}</div>;
@@ -19,10 +21,11 @@ export function CategoriesManager() {
 
   const handleDelete = async (id: number, name: string) => {
     if (confirm(t('categories.deleteConfirm', { name }))) {
+      setActionError(null);
       try {
         await deleteCategory(id);
-      } catch {
-        alert(t('categories.deleteError'));
+      } catch (error: unknown) {
+        setActionError(getApiErrorMessage(error, t('categories.deleteError'), t));
       }
     }
   };
@@ -39,6 +42,11 @@ export function CategoriesManager() {
 
   return (
     <div className="space-y-6">
+      {actionError ? (
+        <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+          {actionError}
+        </div>
+      ) : null}
       <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
         <div>
           <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">{t('categories.title')}</h3>
@@ -61,7 +69,7 @@ export function CategoriesManager() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {categories.map(cat => (
-            <div key={cat.id} className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+            <div key={cat.id} className="flex items-center justify-between p-4 bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-700 rounded-2xl shadow-sm hover:shadow-md transition-all group">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 border transition-transform hover:scale-105" style={getCategoryBadgeStyle(cat.color)}>
                   {cat.icon || t('common.folderIcon')}
@@ -73,7 +81,7 @@ export function CategoriesManager() {
                 <button onClick={() => handleOpenEdit(cat)} className="p-2 text-neutral-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-950/40 rounded-xl transition-colors" title={t('common.editCategory')}>
                   <Pencil className="w-4 h-4" />
                 </button>
-                <button onClick={() => handleDelete(cat.id, cat.name)} className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors" title={t('categories.deleteError')}>
+                <button onClick={() => handleDelete(cat.id, cat.name)} className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors" title={t('common.delete')}>
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>

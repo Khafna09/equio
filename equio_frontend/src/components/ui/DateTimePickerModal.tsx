@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
-import { Modal } from './Modal';
-import { DayPicker } from 'react-day-picker';
-import { es, enUS } from 'date-fns/locale';
+import { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { setHours, setMinutes } from 'date-fns';
+import { enUS, es } from 'date-fns/locale';
+import { Modal } from './Modal';
+import { Calendar } from './Calendar';
 import { Button } from './Button';
-import 'react-day-picker/dist/style.css';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { useTimeFormat } from '../../hooks/useTimeFormat';
 
 interface DateTimePickerModalProps {
   isOpen: boolean;
@@ -14,133 +15,153 @@ interface DateTimePickerModalProps {
   onSave: (date: Date) => void;
 }
 
-export function DateTimePickerModal({ isOpen, onClose, initialDate, onSave }: DateTimePickerModalProps) {
+interface TimeFieldProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}
+
+function TimeField({ label, value, min, max, onChange }: TimeFieldProps) {
+  const setWithinRange = (nextValue: number) => {
+    if (nextValue < min || nextValue > max || Number.isNaN(nextValue)) return;
+    onChange(nextValue);
+  };
+
+  const decrement = () => onChange(value === min ? max : value - 1);
+  const increment = () => onChange(value === max ? min : value + 1);
+
+  return (
+    <div className="w-[68px]">
+      <span className="mb-1.5 block text-center text-xs font-semibold uppercase text-muted-foreground">
+        {label}
+      </span>
+      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+        <button
+          type="button"
+          aria-label={`${label} -`}
+          onClick={increment}
+          className="flex h-7 w-full items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronUp className="h-4 w-4" />
+        </button>
+        <input
+          type="text"
+          inputMode="numeric"
+          aria-label={label}
+          value={String(value).padStart(2, '0')}
+          onChange={(event) => setWithinRange(Number(event.target.value))}
+          className="h-9 w-full border-y border-border bg-transparent text-center text-base font-semibold text-foreground outline-none focus:bg-primary/5"
+        />
+        <button
+          type="button"
+          aria-label={`${label} +`}
+          onClick={decrement}
+          className="flex h-7 w-full items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function DateTimePickerModal({
+  isOpen,
+  onClose,
+  initialDate,
+  onSave,
+}: DateTimePickerModalProps) {
   const { t, language } = useI18n();
-  const [date, setDate] = useState<Date>(initialDate);
-  const [hour, setHour] = useState<number>(initialDate.getHours());
-  const [minute, setMinute] = useState<number>(initialDate.getMinutes());
+  const { is24Hour } = useTimeFormat();
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [hour, setHour] = useState(initialDate.getHours());
+  const [minute, setMinute] = useState(initialDate.getMinutes());
 
-  const hourRef = useRef<HTMLDivElement>(null);
-  const minuteRef = useRef<HTMLDivElement>(null);
+  const locale = language === 'es' ? es : enUS;
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = is24Hour ? hour : hour % 12 || 12;
 
-  useEffect(() => {
-    if (isOpen) {
-      setDate(initialDate);
-      setHour(initialDate.getHours());
-      setMinute(initialDate.getMinutes());
-    }
-  }, [isOpen, initialDate]);
-
-  useEffect(() => {
-    // Auto-scroll to selected time
-    if (isOpen && hourRef.current && minuteRef.current) {
-      const selectedHourButton = hourRef.current.querySelector(`[data-value="${hour}"]`) as HTMLElement;
-      if (selectedHourButton) {
-        hourRef.current.scrollTop = selectedHourButton.offsetTop - hourRef.current.offsetHeight / 2 + selectedHourButton.offsetHeight / 2;
-      }
-      const selectedMinuteButton = minuteRef.current.querySelector(`[data-value="${minute}"]`) as HTMLElement;
-      if (selectedMinuteButton) {
-        minuteRef.current.scrollTop = selectedMinuteButton.offsetTop - minuteRef.current.offsetHeight / 2 + selectedMinuteButton.offsetHeight / 2;
-      }
-    }
-  }, [isOpen, hour, minute]);
-
-  const handleSave = () => {
-    if (!date) return;
-    let newDate = setHours(date, hour);
-    newDate = setMinutes(newDate, minute);
-    onSave(newDate);
+  const handleClose = () => {
+    setSelectedDate(initialDate);
+    setHour(initialDate.getHours());
+    setMinute(initialDate.getMinutes());
     onClose();
   };
 
-  const css = `
-    .rdp {
-      --rdp-cell-size: 40px;
-      --rdp-accent-color: #10B981;
-      --rdp-background-color: #ecfdf5;
-      margin: 0;
+  const handleConfirm = () => {
+    const dateWithHour = setHours(selectedDate, hour);
+    onSave(setMinutes(dateWithHour, minute));
+    onClose();
+  };
+
+  const handleHourChange = (nextDisplayHour: number) => {
+    if (is24Hour) {
+      setHour(nextDisplayHour);
+      return;
     }
-    .rdp-day_selected {
-      font-weight: bold;
-    }
-    .dark .rdp {
-      --rdp-background-color: #064e3b;
-      color: #f3f4f6;
-    }
-    .dark .rdp-day {
-      color: #f3f4f6;
-    }
-    .dark .rdp-day_outside {
-      color: #6b7280;
-    }
-    .dark .rdp-caption_label,
-    .dark .rdp-nav_button {
-      color: #f3f4f6;
-    }
-  `;
+
+    setHour((period === 'PM' ? 12 : 0) + (nextDisplayHour % 12));
+  };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={language === 'en' ? 'Date and time' : 'Fecha y hora'}>
-      <style>{css}</style>
-      <div className="flex flex-col md:flex-row gap-6 mt-4">
-        
-        {/* Calendar Side */}
-        <div className="flex-1 border-b md:border-b-0 md:border-r border-neutral-100 dark:border-neutral-700 pb-6 md:pb-0 md:pr-6 flex justify-center">
-          <DayPicker
+    <Modal isOpen={isOpen} onClose={handleClose} title={t('components.dateTimeTitle')} className="max-w-[500px]">
+      <div className="mt-1 space-y-4">
+        <div className="flex items-start justify-start gap-5">
+          <Calendar
+            compact
             mode="single"
-            selected={date}
-            onSelect={(d) => d && setDate(d)}
-            locale={language === 'en' ? enUS : es}
-            showOutsideDays
-            className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-700 text-neutral-900 dark:text-white shadow-sm"
+            selected={selectedDate}
+            onSelect={(date) => date && setSelectedDate(date)}
+            locale={locale}
+            className="shrink-0"
           />
-        </div>
-
-        {/* Time Side */}
-        <div className="w-full md:w-32 flex gap-4 justify-center items-start">
-          <div className="flex flex-col items-center">
-            <span className="text-xs font-semibold text-neutral-400 dark:text-neutral-400 mb-2 uppercase">{language === 'en' ? 'Hour' : 'Hora'}</span>
-            <div ref={hourRef} className="h-[280px] w-14 overflow-y-auto no-scrollbar scroll-smooth flex flex-col gap-1 border border-neutral-100 dark:border-neutral-700 rounded-xl p-1 shadow-inner bg-neutral-50 dark:bg-neutral-900" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <style>{`.no-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-              {Array.from({ length: 24 }).map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  data-value={i}
-                  onClick={() => setHour(i)}
-                  className={`py-2 text-sm font-medium rounded-lg transition-colors flex-shrink-0 ${hour === i ? 'bg-primary-500 text-white shadow-md' : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800'}`}
-                >
-                  {i.toString().padStart(2, '0')}
-                </button>
-              ))}
+          <div className="min-w-0 pt-6">
+            <div className="flex items-end gap-2">
+              <TimeField
+                label={t('components.hour')}
+                value={displayHour}
+                min={is24Hour ? 0 : 1}
+                max={is24Hour ? 23 : 12}
+                onChange={handleHourChange}
+              />
+              <span className="pb-8 text-xl font-semibold text-muted-foreground">:</span>
+              <TimeField
+                label={t('components.minute')}
+                value={minute}
+                min={0}
+                max={59}
+                onChange={setMinute}
+              />
             </div>
-          </div>
-          
-          <div className="text-xl font-bold text-neutral-300 dark:text-neutral-600 mt-10">:</div>
-
-          <div className="flex flex-col items-center">
-            <span className="text-xs font-semibold text-neutral-400 dark:text-neutral-400 mb-2 uppercase">Min</span>
-            <div ref={minuteRef} className="h-[280px] w-14 overflow-y-auto no-scrollbar scroll-smooth flex flex-col gap-1 border border-neutral-100 dark:border-neutral-700 rounded-xl p-1 shadow-inner bg-neutral-50 dark:bg-neutral-900" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              {Array.from({ length: 60 }).map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  data-value={i}
-                  onClick={() => setMinute(i)}
-                  className={`py-2 text-sm font-medium rounded-lg transition-colors flex-shrink-0 ${minute === i ? 'bg-primary-500 text-white shadow-md' : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800'}`}
-                >
-                  {i.toString().padStart(2, '0')}
-                </button>
-              ))}
-            </div>
+            {!is24Hour ? (
+              <div className="mt-3 grid grid-cols-2 rounded-lg bg-muted p-1">
+                {(['AM', 'PM'] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setHour(option === period ? hour : (hour + 12) % 24)}
+                    className={`h-8 rounded-md text-xs font-medium transition-colors ${
+                      period === option
+                        ? 'bg-card text-primary shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
-      </div>
-      
-      <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-700">
-        <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
-        <Button variant="primary" onClick={handleSave}>{t('common.save')}</Button>
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button variant="outline" onClick={handleClose}>
+            {t('components.dateCancel')}
+          </Button>
+          <Button onClick={handleConfirm}>{t('components.dateSave')}</Button>
+        </div>
       </div>
     </Modal>
   );

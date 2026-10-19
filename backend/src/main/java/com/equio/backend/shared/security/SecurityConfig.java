@@ -1,89 +1,232 @@
 package com.equio.backend.shared.security;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.*;
+import org.springframework.security.authentication.*;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
+import org.springframework.security.web.*;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.*;
+import org.springframework.web.cors.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Configuration
-@EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
-
     private final JwtAuthenticationFilter jwtAuthFilter;
+    private final RateLimitFilter rateLimitFilter;
+    private final RequestBodyLimitFilter requestBodyLimitFilter;
+    private final RequestIdFilter requestIdFilter;
     private final UserDetailsService userDetailsService;
+    private final JsonAuthenticationEntryPoint authenticationEntryPoint;
+    private final JsonAccessDeniedHandler accessDeniedHandler;
     private final List<String> allowedOrigins;
+    private final boolean requireHttps;
+    private final boolean swaggerPublic;
+    private final boolean cookieSecure;
+    private final int bcryptStrength;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthFilter,
+            RateLimitFilter rateLimitFilter,
+            RequestBodyLimitFilter requestBodyLimitFilter,
+            RequestIdFilter requestIdFilter,
             UserDetailsService userDetailsService,
-            @Value("${app.cors.allowed-origins}") List<String> allowedOrigins
+            JsonAuthenticationEntryPoint authenticationEntryPoint,
+            JsonAccessDeniedHandler accessDeniedHandler,
+            @Value("${app.cors.allowed-origins}") List<String> allowedOrigins,
+            @Value("${app.security.require-https}") boolean requireHttps,
+            @Value("${app.security.swagger-public}") boolean swaggerPublic,
+            @Value("${app.refresh-token.cookie-secure}") boolean cookieSecure,
+            @Value("${app.security.bcrypt-strength}") int bcryptStrength
     ) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.rateLimitFilter = rateLimitFilter;
+        this.requestBodyLimitFilter = requestBodyLimitFilter;
+        this.requestIdFilter = requestIdFilter;
         this.userDetailsService = userDetailsService;
+        this.authenticationEntryPoint = authenticationEntryPoint;
+        this.accessDeniedHandler = accessDeniedHandler;
         this.allowedOrigins = allowedOrigins;
+        this.requireHttps = requireHttps;
+        this.swaggerPublic = swaggerPublic;
+        this.cookieSecure = cookieSecure;
+        this.bcryptStrength = bcryptStrength;
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        var csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        csrfRepository.setCookiePath("/");
+        csrfRepository.setCookieCustomizer(cookie -> cookie
+                .sameSite("Strict")
+                .secure(cookieSecure));
+
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/error").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(csrfRepository)
+                        .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
+                        .requireCsrfProtectionMatcher(csrfProtectedEndpoints()))
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(
+                            "/api/v1/auth/**",
+                            "/actuator/health/liveness",
+                            "/actuator/health/readiness",
+                            "/error"
+                    ).permitAll();
+                    if (swaggerPublic) {
+                        auth.requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll();
+                    }
+                    auth.anyRequest().authenticated();
+                })
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(
+                                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"))
+                        .referrerPolicy(referrer -> referrer.policy(
+                                ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31_536_000))
+                        .addHeaderWriter(new StaticHeadersWriter(
+                                "Permissions-Policy",
+                                "camera=(), microphone=(), geolocation=(), payment=()")))
                 .authenticationProvider(authenticationProvider())
+                .addFilterBefore(requestBodyLimitFilter, org.springframework.security.web.csrf.CsrfFilter.class)
+                .addFilterBefore(rateLimitFilter, RequestBodyLimitFilter.class)
+                .addFilterBefore(requestIdFilter, RateLimitFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
+        if (requireHttps) {
+            http.redirectToHttps(Customizer.withDefaults());
+        }
         return http.build();
     }
 
+    private RequestMatcher csrfProtectedEndpoints() {
+        return request -> {
+            String method = request.getMethod();
+            if ("GET".equalsIgnoreCase(method)
+                    || "HEAD".equalsIgnoreCase(method)
+                    || "OPTIONS".equalsIgnoreCase(method)
+                    || "TRACE".equalsIgnoreCase(method)) {
+                return false;
+            }
+            String path = request.getRequestURI()
+                    .substring(request.getContextPath().length());
+            return path.startsWith("/api/v1/auth/");
+        };
+    }
+
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
+    CorsConfigurationSource corsConfigurationSource() {
+        var configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(allowedOrigins);
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedMethods(List.of(
+                "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "X-XSRF-TOKEN", "X-Request-Id"));
+        configuration.setExposedHeaders(List.of(
+                "X-Request-Id", "Retry-After"));
         configuration.setAllowCredentials(true);
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
+        configuration.setMaxAge(3600L);
+        var source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
         return source;
     }
 
     @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
+    FilterRegistrationBean<RequestIdFilter> requestIdFilterRegistration(
+            RequestIdFilter filter
+    ) {
+        return disabledContainerRegistration(filter);
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
+    FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(
+            RateLimitFilter filter
+    ) {
+        return disabledContainerRegistration(filter);
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+    FilterRegistrationBean<RequestBodyLimitFilter> requestBodyLimitFilterRegistration(
+            RequestBodyLimitFilter filter) {
+        return disabledContainerRegistration(filter);
+    }
+
+    @Bean
+    FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(
+            JwtAuthenticationFilter filter
+    ) {
+        return disabledContainerRegistration(filter);
+    }
+
+    private <T extends jakarta.servlet.Filter> FilterRegistrationBean<T>
+            disabledContainerRegistration(T filter) {
+        var registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    AuthenticationProvider authenticationProvider() {
+        var provider = new DaoAuthenticationProvider(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder());
+        return provider;
+    }
+
+    @Bean
+    AuthenticationManager authenticationManager(AuthenticationConfiguration configuration)
+            throws Exception {
+        return configuration.getAuthenticationManager();
+    }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        if (bcryptStrength < 10 || bcryptStrength > 14) {
+            throw new IllegalStateException("BCrypt strength must be between 10 and 14");
+        }
+        var legacyBcrypt = new BCryptPasswordEncoder(bcryptStrength);
+        var pbkdf2 = new Pbkdf2PasswordEncoder(
+                "",
+                16,
+                600_000,
+                Pbkdf2PasswordEncoder.SecretKeyFactoryAlgorithm.PBKDF2WithHmacSHA256
+        );
+        var encoder = new DelegatingPasswordEncoder(
+                "pbkdf2",
+                Map.of(
+                        "pbkdf2", pbkdf2,
+                        "bcrypt", legacyBcrypt
+                )
+        );
+        encoder.setDefaultPasswordEncoderForMatches(legacyBcrypt);
+        return encoder;
     }
 }

@@ -27,3 +27,12 @@ export interface FundRequest {
   amount: number;
   operation: 'ADD' | 'WITHDRAW';
 }
+
+export interface SavingsPoolResponse {
+  balance: number;
+  updatedAt: string | null;
+}
+
+export interface SavingsPoolTransferRequest {
+  amount: number;
+}

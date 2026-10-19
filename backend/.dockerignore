@@ -1,0 +1,11 @@
+.env
+.git
+.github
+.idea
+.vscode
+target
+*.log
+*.hprof
+README.md
+scripts
+src/test

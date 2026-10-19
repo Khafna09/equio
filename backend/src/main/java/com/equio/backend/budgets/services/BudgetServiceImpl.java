@@ -1,87 +1,114 @@
 package com.equio.backend.budgets.services;
 
+import com.equio.backend.shared.exceptions.BusinessConflictException;
+import com.equio.backend.shared.exceptions.ResourceNotFoundException;
+import com.equio.backend.shared.security.RlsContext;
+import com.equio.backend.shared.security.FinancialConcurrencyGuard;
 import com.equio.backend.budgets.dto.requests.BudgetRequest;
 import com.equio.backend.budgets.dto.responses.BudgetResponse;
 import com.equio.backend.budgets.entities.Budget;
 import com.equio.backend.budgets.entities.enums.BudgetStatus;
+import com.equio.backend.budgets.entities.enums.BudgetScope;
+import com.equio.backend.budgets.entities.enums.SavingsType;
 import com.equio.backend.budgets.repositories.BudgetRepository;
-import com.equio.backend.savings.repositories.SavingGoalRepository;
+import com.equio.backend.shared.events.BudgetLinkRemovalRequestedEvent;
 import com.equio.backend.transactions.entities.Category;
 import com.equio.backend.transactions.entities.enums.MovementType;
-import com.equio.backend.transactions.repositories.CategoryRepository;
-import com.equio.backend.transactions.repositories.MovementRepository;
+import com.equio.backend.transactions.services.CategoryLookupService;
+import com.equio.backend.transactions.services.MovementQueryService;
 import com.equio.backend.users.entities.User;
-import com.equio.backend.users.repositories.UserRepository;
+import com.equio.backend.users.services.UserLookupService;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.HashSet;
+import java.util.Map;
 
 @Service
 public class BudgetServiceImpl implements BudgetService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(BudgetServiceImpl.class);
 
     private final BudgetRepository budgetRepository;
-    private final UserRepository userRepository;
-    private final CategoryRepository categoryRepository;
-    private final SavingGoalRepository savingGoalRepository;
-    private final MovementRepository movementRepository;
+    private final UserLookupService userLookupService;
+    private final CategoryLookupService categoryLookupService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final MovementQueryService movementQueryService;
+    private final RlsContext rlsContext;
+    private final BudgetSettlementService budgetSettlementService;
+    private final AdvancedBudgetAccessService advancedBudgetAccessService;
+    private final BudgetCalculationService budgetCalculationService;
+    private final FinancialConcurrencyGuard concurrencyGuard;
 
     public BudgetServiceImpl(BudgetRepository budgetRepository,
-                             UserRepository userRepository,
-                             CategoryRepository categoryRepository,
-                             SavingGoalRepository savingGoalRepository,
-                             MovementRepository movementRepository) {
+                             UserLookupService userLookupService,
+                             CategoryLookupService categoryLookupService,
+                             ApplicationEventPublisher eventPublisher,
+                             MovementQueryService movementQueryService,
+                             RlsContext rlsContext,
+                             BudgetSettlementService budgetSettlementService,
+                             AdvancedBudgetAccessService advancedBudgetAccessService,
+                             BudgetCalculationService budgetCalculationService,
+                             FinancialConcurrencyGuard concurrencyGuard) {
         this.budgetRepository = budgetRepository;
-        this.userRepository = userRepository;
-        this.categoryRepository = categoryRepository;
-        this.savingGoalRepository = savingGoalRepository;
-        this.movementRepository = movementRepository;
+        this.userLookupService = userLookupService;
+        this.categoryLookupService = categoryLookupService;
+        this.eventPublisher = eventPublisher;
+        this.movementQueryService = movementQueryService;
+        this.rlsContext = rlsContext;
+        this.budgetSettlementService = budgetSettlementService;
+        this.advancedBudgetAccessService = advancedBudgetAccessService;
+        this.budgetCalculationService = budgetCalculationService;
+        this.concurrencyGuard = concurrencyGuard;
     }
 
     @Override
     @Transactional
     public BudgetResponse create(Long userId, BudgetRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
+        if (Boolean.TRUE.equals(request.isIndependent())
+                || (request.subBudgetsToAdopt() != null && !request.subBudgetsToAdopt().isEmpty())) {
+            advancedBudgetAccessService.requireEnabledForUser(userId);
+        }
+        BudgetPolicy.validateSavings(request.totalAmount(), request.savingsType(), request.savingsValue());
+        User user = userLookupService.requireUser(userId);
 
-        if (request.startDate() == null) {
-            throw new IllegalArgumentException("Todo presupuesto requiere una fecha de inicio (startDate)");
-        }
-        
-        LocalDate finalStartDate = request.startDate();
-        LocalDate finalEndDate = request.endDate();
-        
-        if (request.isFixed()) {
-            if (Boolean.TRUE.equals(request.retroactiveCatchUp())) {
-                // Si es retroactivo, por regla de negocio inicia estrictamente el día 1 del mes
-                finalStartDate = finalStartDate.withDayOfMonth(1);
-                finalEndDate = finalStartDate.plusMonths(1).minusDays(1);
-            } else if (finalEndDate == null) {
-                finalEndDate = finalStartDate.plusMonths(1).minusDays(1);
-            }
-        } else {
-            if (finalEndDate == null) {
-                throw new IllegalArgumentException("Un presupuesto por fechas (no recurrente) requiere endDate");
-            }
-            if (finalEndDate.isBefore(finalStartDate)) {
-                throw new IllegalArgumentException("La fecha de fin no puede ser anterior a la fecha de inicio");
-            }
-        }
+        BudgetPolicy.Period period = BudgetPolicy.resolvePeriod(
+                request.isFixed(),
+                Boolean.TRUE.equals(request.retroactiveCatchUp()),
+                request.startDate(),
+                request.endDate());
+        LocalDate finalStartDate = period.startDate();
+        LocalDate finalEndDate = period.endDate();
 
         boolean isGlobalRequest = request.categoryId() == null;
+        if (isGlobalRequest && (request.name() == null || request.name().isBlank())) {
+            throw new IllegalArgumentException("A global budget requires a name");
+        }
+        if (isGlobalRequest && (Boolean.TRUE.equals(request.isIndependent()) || request.parentBudgetId() != null)) {
+            throw new IllegalArgumentException("A global budget cannot be independent or have a parent");
+        }
+        if (!isGlobalRequest && Boolean.TRUE.equals(request.isIndependent()) && request.parentBudgetId() != null) {
+            throw new IllegalArgumentException("An independent category budget cannot have a parent");
+        }
 
         // BR-1.1: Solo puede existir un Presupuesto Global activo a la vez
         if (isGlobalRequest) {
             boolean hasActiveGlobal = budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.ACTIVE)
                     .stream().anyMatch(b -> b.getCategory() == null);
             if (hasActiveGlobal) {
-                throw new IllegalArgumentException("Ya existe un presupuesto global activo para este usuario.");
+                throw new BusinessConflictException(
+                        "BUDGET_GLOBAL_ALREADY_ACTIVE",
+                        "An active global budget already exists.");
             }
         }
 
@@ -95,6 +122,8 @@ public class BudgetServiceImpl implements BudgetService {
         budget.setSavingsValue(request.savingsValue());
         budget.setUser(user);
         budget.setStatus(BudgetStatus.ACTIVE);
+        budget.setAccountingStartAt(isGlobalRequest
+                ? accountingStart(userId, finalStartDate, finalEndDate) : finalStartDate.atStartOfDay());
 
         // BR-3.2 Inicialización Desfasada / Catch-up
         BigDecimal initialSpent = BigDecimal.ZERO;
@@ -103,22 +132,20 @@ public class BudgetServiceImpl implements BudgetService {
             LocalDateTime endDateTime = finalEndDate != null ? finalEndDate.atTime(23, 59, 59) : LocalDateTime.now();
             
             if (isGlobalRequest) {
-                initialSpent = movementRepository.sumAmountByUserIdAndTypeAndDateBetween(
+                initialSpent = movementQueryService.sumByType(
                         userId, MovementType.EXPENSE, startDateTime, endDateTime);
             } else {
-                initialSpent = movementRepository.sumExpenseByUserIdAndCategoryIdAndDateBetween(
+                initialSpent = movementQueryService.sumExpensesByCategory(
                         userId, request.categoryId(), startDateTime, endDateTime);
             }
         }
         budget.setSpentAmount(initialSpent);
 
         if (!isGlobalRequest) {
-            Category category = categoryRepository.findById(request.categoryId())
-                    .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada con ID: " + request.categoryId()));
-            if (!category.getUser().getId().equals(userId)) {
-                throw new IllegalArgumentException("La categoría no pertenece al usuario");
-            }
+            Category category = categoryLookupService.requireOwnedCategory(userId, request.categoryId());
+            validateCategoryAvailable(userId, request.categoryId(), null);
             budget.setCategory(category);
+            budget.setName(category.getName());
             
             if (!Boolean.TRUE.equals(request.isIndependent())) {
                 Budget parentToLink = budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.ACTIVE).stream()
@@ -126,12 +153,20 @@ public class BudgetServiceImpl implements BudgetService {
                         .findFirst()
                         .orElse(null);
 
+                if (request.parentBudgetId() != null
+                        && (parentToLink == null || !request.parentBudgetId().equals(parentToLink.getId()))) {
+                    throw new BusinessConflictException(
+                            "BUDGET_PARENT_STALE",
+                            "The global budget changed before the category budget was created.");
+                }
+
                 if (parentToLink != null) {
                     // BR-2.1: Herencia de Tiempo
                     budget.setFixed(parentToLink.isFixed());
                     budget.setStartDate(parentToLink.getStartDate());
                     budget.setEndDate(parentToLink.getEndDate());
                     budget.setParentBudget(parentToLink);
+                    budget.setAccountingStartAt(parentToLink.movementStart());
 
                     // BR-3.1: Límite Matemático en Creación
                     BigDecimal assignableLimit = calculateAssignableLimit(parentToLink);
@@ -140,8 +175,14 @@ public class BudgetServiceImpl implements BudgetService {
                             .map(Budget::getTotalAmount)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
                     if (sumSiblings.add(budget.getTotalAmount()).compareTo(assignableLimit) > 0) {
-                        throw new IllegalArgumentException("La suma de los sub-presupuestos (" + sumSiblings.add(budget.getTotalAmount()) + ") excede el límite asignable del padre global (" + assignableLimit + ") considerando la meta de ahorro.");
+                        throw new BusinessConflictException(
+                                "BUDGET_INSUFFICIENT_CAPACITY",
+                                "The category budget exceeds the global budget capacity.");
                     }
+                } else {
+                    throw new BusinessConflictException(
+                            "BUDGET_GLOBAL_NOT_ACTIVE",
+                            "A linked category budget requires an active global budget.");
                 }
             }
 
@@ -152,7 +193,7 @@ public class BudgetServiceImpl implements BudgetService {
             if (effectiveStart != null && Boolean.TRUE.equals(request.retroactiveCatchUp())) {
                 LocalDateTime startDateTime = effectiveStart.atStartOfDay();
                 LocalDateTime endDateTime = effectiveEnd != null ? effectiveEnd.atTime(23, 59, 59) : LocalDateTime.now();
-                BigDecimal categorySpent = movementRepository.sumExpenseByUserIdAndCategoryIdAndDateBetween(
+                BigDecimal categorySpent = movementQueryService.sumExpensesByCategory(
                         userId, request.categoryId(), startDateTime, endDateTime);
                 budget.setSpentAmount(categorySpent);
             }
@@ -165,9 +206,19 @@ public class BudgetServiceImpl implements BudgetService {
             
             List<Budget> independentBudgets;
             if (request.subBudgetsToAdopt() != null && !request.subBudgetsToAdopt().isEmpty()) {
+                if (new HashSet<>(request.subBudgetsToAdopt()).size() != request.subBudgetsToAdopt().size()) {
+                    throw new BusinessConflictException(
+                            "BUDGET_ADOPTION_DUPLICATE_IDS",
+                            "The adoption list contains duplicate budget identifiers.");
+                }
                 independentBudgets = allIndependentBudgets.stream()
                         .filter(b -> request.subBudgetsToAdopt().contains(b.getId()))
                         .toList();
+                if (independentBudgets.size() != request.subBudgetsToAdopt().size()) {
+                    throw new BusinessConflictException(
+                            "BUDGET_ADOPTION_STALE",
+                            "One or more budgets selected for adoption are no longer available.");
+                }
             } else {
                 // Si la request no pasa adopción explícita, no adoptar ninguno.
                 // En modo normal, el front podría pasar todos o ninguno si no hay independientes.
@@ -179,7 +230,9 @@ public class BudgetServiceImpl implements BudgetService {
                     .map(Budget::getTotalAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             if (sumIndep.compareTo(assignableLimit) > 0) {
-                throw new IllegalArgumentException("La suma de los presupuestos independientes a vincular (" + sumIndep + ") excede el límite asignable del nuevo presupuesto global (" + assignableLimit + ") considerando la meta de ahorro.");
+                throw new BusinessConflictException(
+                        "BUDGET_INSUFFICIENT_CAPACITY",
+                        "The selected independent budgets exceed the new global budget capacity.");
             }
 
             // Save the parent budget FIRST to get a DB ID before children reference it
@@ -194,10 +247,10 @@ public class BudgetServiceImpl implements BudgetService {
                 indep.setFixed(budget.isFixed());
                 indep.setStartDate(budget.getStartDate());
                 indep.setEndDate(budget.getEndDate());
+                indep.setAccountingStartAt(budget.movementStart());
 
                 if (Boolean.TRUE.equals(request.retroactiveCatchUp())) {
-                    // Re-calculate each child's spent from the global's date range
-                    BigDecimal indepSpent = movementRepository.sumExpenseByUserIdAndCategoryIdAndDateBetween(
+                    BigDecimal indepSpent = movementQueryService.sumExpensesByCategory(
                         userId, indep.getCategory().getId(), startDateTime, endDateTime);
                     indep.setSpentAmount(indepSpent != null ? indepSpent : BigDecimal.ZERO);
                 }
@@ -212,12 +265,16 @@ public class BudgetServiceImpl implements BudgetService {
             budget.setSubBudgets(new java.util.ArrayList<>(independentBudgets));
         }
 
-        return toResponse(budgetRepository.save(budget));
+        Budget saved = budgetRepository.save(budget);
+        LOGGER.info("budget_created userId={} budgetId={} scope={}",
+                userId, saved.getId(), budgetCalculationService.scopeOf(saved));
+        return toResponse(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<BudgetResponse> getAllByUser(Long userId) {
+        rlsContext.setUserId(userId);
         return budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.ACTIVE)
                 .stream()
                 .map(this::toResponse)
@@ -227,6 +284,7 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional(readOnly = true)
     public List<BudgetResponse> getHistoryByUser(Long userId) {
+        rlsContext.setUserId(userId);
         return budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.CLOSED)
                 .stream()
                 .map(this::toResponse)
@@ -236,6 +294,7 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional(readOnly = true)
     public BudgetResponse getById(Long userId, Long budgetId) {
+        rlsContext.setUserId(userId);
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
         return toResponse(budget);
     }
@@ -243,11 +302,16 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional
     public BudgetResponse update(Long userId, Long budgetId, BudgetRequest request) {
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
+        BudgetPolicy.validateSavings(request.totalAmount(), request.savingsType(), request.savingsValue());
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
 
         // BR-5.4: Inmutabilidad del Historial
         if (budget.getStatus() == BudgetStatus.CLOSED) {
-            throw new IllegalArgumentException("No se permite modificar un presupuesto cerrado (historial).");
+            throw new BusinessConflictException(
+                    "BUDGET_CLOSED",
+                    "Closed budgets cannot be modified.");
         }
 
         if (!request.isFixed() && (request.startDate() == null || request.endDate() == null)) {
@@ -256,20 +320,47 @@ public class BudgetServiceImpl implements BudgetService {
 
         // BR-4.3: Bloqueo de Modalidad
         if (budget.isFixed() != request.isFixed()) {
-            throw new IllegalArgumentException("No se permite cambiar la modalidad de un presupuesto activo. Debe cerrar el actual y crear uno nuevo.");
+            throw new BusinessConflictException(
+                    "BUDGET_MODE_CHANGE_NOT_ALLOWED",
+                    "An active budget cannot change its recurrence mode.");
         }
 
         boolean isGlobal = budget.getCategory() == null;
+        if (isGlobal && (request.name() == null || request.name().isBlank())) {
+            throw new IllegalArgumentException("A global budget requires a name");
+        }
+        if (isGlobal != (request.categoryId() == null)) {
+            throw new BusinessConflictException(
+                    "BUDGET_SCOPE_CHANGE_NOT_ALLOWED",
+                    "An active budget cannot change its scope.");
+        }
+        if (!isGlobal) {
+            validateCategoryAvailable(userId, request.categoryId(), budgetId);
+        }
+        if (request.startDate() == null || request.endDate() == null
+                || request.endDate().isBefore(request.startDate())) {
+            throw new IllegalArgumentException("El periodo del presupuesto no es valido.");
+        }
+        if (budget.getParentBudget() != null
+                && (!request.startDate().equals(budget.getParentBudget().getStartDate())
+                    || !request.endDate().equals(budget.getParentBudget().getEndDate()))) {
+            throw new BusinessConflictException(
+                    "BUDGET_LINKED_PERIOD_MISMATCH",
+                    "A linked budget must keep the global budget period.");
+        }
 
         // BR-3.1 & BR-4.2: Límite Matemático y Reducción de Montos
         if (isGlobal) {
-            BigDecimal assignableLimit = calculateAssignableLimit(request.totalAmount(), request.savingsType(), request.savingsValue());
+            BigDecimal assignableLimit = BudgetPolicy.assignableLimit(request.totalAmount(),
+                    request.savingsType(), request.savingsValue(), budget.getSavingsPoolContribution());
             BigDecimal sumSubBudgets = budget.getSubBudgets().stream()
                     .filter(b -> b.getStatus() == BudgetStatus.ACTIVE)
                     .map(Budget::getTotalAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             if (assignableLimit.compareTo(sumSubBudgets) < 0) {
-                throw new IllegalArgumentException("El nuevo límite asignable del presupuesto global (" + assignableLimit + ") tras considerar la meta de ahorro no puede ser menor a la suma de sus sub-presupuestos (" + sumSubBudgets + ")");
+                throw new BusinessConflictException(
+                        "BUDGET_INSUFFICIENT_CAPACITY",
+                        "The new global limit is below its linked allocation.");
             }
         } else {
             if (budget.getParentBudget() != null) {
@@ -280,7 +371,9 @@ public class BudgetServiceImpl implements BudgetService {
                         .map(Budget::getTotalAmount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
                 if (sumSiblings.add(request.totalAmount()).compareTo(assignableLimit) > 0) {
-                    throw new IllegalArgumentException("La suma de los sub-presupuestos (" + sumSiblings.add(request.totalAmount()) + ") excedería el límite asignable del padre global (" + assignableLimit + ") considerando la meta de ahorro.");
+                    throw new BusinessConflictException(
+                            "BUDGET_INSUFFICIENT_CAPACITY",
+                            "The new category limit exceeds the global budget capacity.");
                 }
             }
         }
@@ -296,26 +389,28 @@ public class BudgetServiceImpl implements BudgetService {
                 budget.setNextStartDate(request.startDate());
             }
         } else {
+            LocalDateTime newStart = isGlobal
+                    ? accountingStart(userId, request.startDate(), request.endDate())
+                    : budget.getParentBudget() != null ? budget.getParentBudget().movementStart()
+                    : request.startDate().atStartOfDay();
             budget.setStartDate(request.startDate());
             budget.setEndDate(request.endDate());
-            // Herencia a hijos si se modifican las fechas de un global no fijo
+            budget.setAccountingStartAt(newStart);
             if (isGlobal && budget.getSubBudgets() != null) {
                 for (Budget child : budget.getSubBudgets()) {
                     if (child.getStatus() == BudgetStatus.ACTIVE) {
                         child.setStartDate(request.startDate());
                         child.setEndDate(request.endDate());
+                        child.setAccountingStartAt(newStart);
                     }
                 }
             }
         }
 
         if (request.categoryId() != null) {
-            Category category = categoryRepository.findById(request.categoryId())
-                    .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada"));
-            if (!category.getUser().getId().equals(userId)) {
-                throw new IllegalArgumentException("La categoría no pertenece al usuario");
-            }
+            Category category = categoryLookupService.requireOwnedCategory(userId, request.categoryId());
             budget.setCategory(category);
+            budget.setName(category.getName());
         } else {
             budget.setCategory(null);
         }
@@ -326,6 +421,8 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional
     public void delete(Long userId, Long budgetId, boolean cascade) {
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
         
         // BR-7.2: Orfandad por Eliminación Global
@@ -334,10 +431,13 @@ public class BudgetServiceImpl implements BudgetService {
             if (!children.isEmpty()) {
                 if (cascade) {
                     for (Budget child : children) {
-                        savingGoalRepository.deleteAll(savingGoalRepository.findByBudgetId(child.getId()));
+                        publishBudgetLinkRemoval(child);
                         budgetRepository.delete(child);
                     }
                 } else {
+                    if (children.stream().anyMatch(child -> child.getStatus() == BudgetStatus.ACTIVE)) {
+                        advancedBudgetAccessService.requireEnabledForUser(userId);
+                    }
                     for (Budget child : children) {
                         child.setParentBudget(null);
                         child.setFixed(budget.isFixed());
@@ -349,43 +449,64 @@ public class BudgetServiceImpl implements BudgetService {
             }
         }
 
-        savingGoalRepository.deleteAll(savingGoalRepository.findByBudgetId(budgetId));
+        publishBudgetLinkRemoval(budget);
         budgetRepository.delete(budget);
+        LOGGER.info("budget_deleted userId={} budgetId={} cascade={}", userId, budgetId, cascade);
     }
     
     @Override
     @Transactional
     public BudgetResponse closeBudget(Long userId, Long budgetId) {
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
         Budget budget = findBudgetAndValidateOwner(userId, budgetId);
         if (budget.getStatus() == BudgetStatus.CLOSED) {
-            throw new IllegalArgumentException("El presupuesto ya está cerrado.");
+            throw new BusinessConflictException("BUDGET_CLOSED", "The budget is already closed.");
         }
         
+        LocalDate today = LocalDate.now();
+        if (budget.getStartDate() != null && budget.getStartDate().isAfter(today)) {
+            throw new BusinessConflictException(
+                    "BUDGET_NOT_STARTED",
+                    "A budget cannot be closed before its start date.");
+        }
+        LocalDate closingDate = budget.getEndDate() != null && budget.getEndDate().isBefore(today)
+                ? budget.getEndDate() : today;
         budget.setStatus(BudgetStatus.CLOSED);
-        budget.setEndDate(LocalDate.now()); // BR-5.2 Cierre forzado sella la fecha
+        budget.setEndDate(closingDate);
+        LocalDateTime closingTime = closingDate.isBefore(today)
+                ? closingDate.atTime(java.time.LocalTime.of(23, 59, 59, 999_999_000))
+                : LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        budget.setClosedAt(closingTime);
         
         // BR-5.3 Cascade closing
         if (budget.getSubBudgets() != null && !budget.getSubBudgets().isEmpty()) {
             for (Budget child : budget.getSubBudgets()) {
                 if (child.getStatus() == BudgetStatus.ACTIVE) {
                     child.setStatus(BudgetStatus.CLOSED);
-                    child.setEndDate(LocalDate.now());
+                    child.setEndDate(closingDate);
+                    child.setClosedAt(closingTime);
                     budgetRepository.save(child);
                 }
             }
         }
         
-        return toResponse(budgetRepository.save(budget));
+        Budget closedBudget = budgetRepository.save(budget);
+        budgetSettlementService.publishSettlement(closedBudget, closingDate);
+        LOGGER.info("budget_closed userId={} budgetId={} closingDate={}",
+                userId, budgetId, closingDate);
+        return toResponse(closedBudget);
     }
 
     @Override
     @Transactional
     public void addExpense(Long userId, Long categoryId, BigDecimal amount) {
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
         Optional<Budget> budgetOpt = Optional.empty();
 
         if (categoryId != null) {
-            budgetOpt = budgetRepository.findByUserIdAndCategoryId(userId, categoryId)
-                .filter(b -> b.getStatus() == BudgetStatus.ACTIVE);
+            budgetOpt = budgetRepository.findByUserIdAndCategoryIdAndStatus(userId, categoryId, BudgetStatus.ACTIVE);
         }
 
         if (budgetOpt.isEmpty()) {
@@ -399,7 +520,6 @@ public class BudgetServiceImpl implements BudgetService {
             budget.setSpentAmount(budget.getSpentAmount().add(amount));
             budgetRepository.save(budget);
             
-            // Si es un sub-presupuesto, también sumar al padre global (propagar)
             if (budget.getParentBudget() != null && budget.getParentBudget().getStatus() == BudgetStatus.ACTIVE) {
                 Budget parent = budget.getParentBudget();
                 parent.setSpentAmount(parent.getSpentAmount().add(amount));
@@ -408,32 +528,79 @@ public class BudgetServiceImpl implements BudgetService {
         });
     }
 
-    // ─── Helper ────────────────────────────────────────────────────────────────
+
+    private void validateCategoryAvailable(Long userId, Long categoryId, Long currentBudgetId) {
+        boolean alreadyAssigned = budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.ACTIVE).stream()
+                .anyMatch(other -> other.getCategory() != null
+                        && categoryId.equals(other.getCategory().getId())
+                        && !other.getId().equals(currentBudgetId));
+        if (alreadyAssigned) {
+            throw new BusinessConflictException(
+                    "BUDGET_CATEGORY_ALREADY_ACTIVE",
+                    "An active budget already exists for this category.",
+                    Map.of("categoryId", categoryId));
+        }
+    }
 
     private Budget findBudgetAndValidateOwner(Long userId, Long budgetId) {
-        Budget budget = budgetRepository.findById(budgetId)
-                .orElseThrow(() -> new IllegalArgumentException("Presupuesto no encontrado con ID: " + budgetId));
-        if (!budget.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("El presupuesto no pertenece al usuario");
+        return budgetRepository.findByIdAndUserId(budgetId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Budget"));
+    }
+
+    private void publishBudgetLinkRemoval(Budget budget) {
+        eventPublisher.publishEvent(new BudgetLinkRemovalRequestedEvent(
+                budget.getId(), budget.getStatus() == BudgetStatus.CLOSED, budget.getUser().getId()));
+    }
+
+    private LocalDateTime accountingStart(Long userId, LocalDate start, LocalDate end) {
+        LocalDateTime boundary = start.atStartOfDay();
+        for (Budget closed : budgetRepository.findByUserIdAndStatus(userId, BudgetStatus.CLOSED)) {
+            if (closed.getCategory() != null || closed.getStartDate() == null || closed.getEndDate() == null
+                    || closed.getEndDate().isBefore(start) || closed.getStartDate().isAfter(end)) continue;
+            if (!closed.getEndDate().equals(start) || !closed.movementEnd().toLocalTime()
+                    .isBefore(java.time.LocalTime.of(23, 59, 59, 999_999_000))) {
+                throw new BusinessConflictException("BUDGET_CLOSED_PERIOD_OVERLAP",
+                        "The new period overlaps a closed global budget.");
+            }
+            LocalDateTime next = closed.movementEnd().plusNanos(1_000);
+            if (next.isAfter(boundary)) boundary = next;
         }
-        return budget;
+        return boundary;
     }
 
     private BudgetResponse toResponse(Budget budget) {
         BigDecimal total = budget.getTotalAmount();
-        BigDecimal spent = calculateSpentAmount(budget);
-        BigDecimal remaining = total.subtract(spent).max(BigDecimal.ZERO);
+        BigDecimal spent = budgetCalculationService.spentAmount(budget);
+        BigDecimal spendingLimit = budget.getCategory() == null
+                ? budgetCalculationService.assignableAmount(budget)
+                : total;
+        BigDecimal remaining = spendingLimit.subtract(spent).max(BigDecimal.ZERO);
 
         double progress = 0.0;
-        if (total.compareTo(BigDecimal.ZERO) > 0) {
-            progress = spent.divide(total, 4, RoundingMode.HALF_UP)
+        if (spendingLimit.compareTo(BigDecimal.ZERO) > 0) {
+            progress = spent.divide(spendingLimit, 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100))
                     .doubleValue();
+        } else if (spent.signum() > 0) {
+            progress = 100.0;
         }
 
-        boolean overBudget = spent.compareTo(total) >= 0;
+        boolean overBudget = spent.compareTo(spendingLimit) > 0;
 
         Category cat = budget.getCategory();
+        BudgetScope scope = budgetCalculationService.scopeOf(budget);
+        BigDecimal assignableAmount = null;
+        BigDecimal allocatedAmount = null;
+        BigDecimal unallocatedAmount = null;
+        if (scope == BudgetScope.GLOBAL) {
+            assignableAmount = spendingLimit;
+            allocatedAmount = budgetCalculationService.allocatedAmount(budget);
+            unallocatedAmount = assignableAmount.subtract(allocatedAmount).max(BigDecimal.ZERO);
+        }
+        boolean active = budget.getStatus() == BudgetStatus.ACTIVE;
+        boolean hasActiveGlobal = scope == BudgetScope.INDEPENDENT_CATEGORY
+                && budgetRepository.findByUserIdAndStatusAndCategoryIsNull(
+                        budget.getUser().getId(), BudgetStatus.ACTIVE).isPresent();
 
         return new BudgetResponse(
                 budget.getId(),
@@ -450,9 +617,17 @@ public class BudgetServiceImpl implements BudgetService {
                 cat != null ? cat.getColor() : null,
                 cat != null ? cat.getIcon() : null,
                 budget.getParentBudget() != null ? budget.getParentBudget().getId() : null,
+                scope,
                 budget.getStatus() != null ? budget.getStatus().name() : BudgetStatus.ACTIVE.name(),
                 budget.getSavingsType(),
                 budget.getSavingsValue(),
+                budget.getSavingsPoolContribution(),
+                assignableAmount,
+                allocatedAmount,
+                unallocatedAmount,
+                active && advancedBudgetAccessService.isEnabled() && hasActiveGlobal,
+                active && advancedBudgetAccessService.isEnabled() && scope == BudgetScope.LINKED_CATEGORY,
+                active && scope != BudgetScope.LINKED_CATEGORY,
                 overBudget,
                 budget.getCreatedAt() != null
                         ? budget.getCreatedAt().toInstant()
@@ -463,48 +638,11 @@ public class BudgetServiceImpl implements BudgetService {
         );
     }
 
-    private BigDecimal calculateSpentAmount(Budget budget) {
-        if (budget == null) return BigDecimal.ZERO;
-
-        LocalDate start = budget.getStartDate();
-        LocalDate end = budget.getEndDate();
-
-        if (start == null && budget.getParentBudget() != null) {
-            start = budget.getParentBudget().getStartDate();
-            end = budget.getParentBudget().getEndDate();
-        }
-
-        if (start != null && budget.getUser() != null) {
-            LocalDateTime startDateTime = start.atStartOfDay();
-            LocalDateTime endDateTime = end != null ? end.atTime(23, 59, 59) : LocalDateTime.now();
-
-            if (budget.getCategory() == null) {
-                return movementRepository.sumAmountByUserIdAndTypeAndDateBetween(
-                        budget.getUser().getId(), MovementType.EXPENSE, startDateTime, endDateTime);
-            } else {
-                return movementRepository.sumExpenseByUserIdAndCategoryIdAndDateBetween(
-                        budget.getUser().getId(), budget.getCategory().getId(), startDateTime, endDateTime);
-            }
-        }
-
-        return budget.getSpentAmount() != null ? budget.getSpentAmount() : BigDecimal.ZERO;
-    }
-
     private BigDecimal calculateAssignableLimit(Budget parentBudget) {
-        return calculateAssignableLimit(parentBudget.getTotalAmount(), parentBudget.getSavingsType(), parentBudget.getSavingsValue());
+        return budgetCalculationService.assignableAmount(parentBudget);
     }
 
-    private BigDecimal calculateAssignableLimit(BigDecimal totalAmount, com.equio.backend.budgets.entities.enums.SavingsType savingsType, BigDecimal savingsValue) {
-        if (totalAmount == null) return BigDecimal.ZERO;
-        BigDecimal deduction = BigDecimal.ZERO;
-        if (savingsType != null && savingsValue != null) {
-            if (savingsType == com.equio.backend.budgets.entities.enums.SavingsType.FIXED) {
-                deduction = savingsValue;
-            } else if (savingsType == com.equio.backend.budgets.entities.enums.SavingsType.PERCENTAGE) {
-                deduction = totalAmount.multiply(savingsValue)
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            }
-        }
-        return totalAmount.subtract(deduction).max(BigDecimal.ZERO);
+    private BigDecimal calculateAssignableLimit(BigDecimal totalAmount, SavingsType savingsType, BigDecimal savingsValue) {
+        return BudgetPolicy.assignableLimit(totalAmount, savingsType, savingsValue);
     }
 }

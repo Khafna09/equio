@@ -1,7 +1,7 @@
 import { Plus, Check } from 'lucide-react';
 import type { CategoryResponse } from '../../types/category.types';
 import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface CategorySelectorProps {
   categories: CategoryResponse[];
@@ -9,15 +9,16 @@ interface CategorySelectorProps {
   selectedCategoryId?: number;
   onSelectCategory: (category: CategoryResponse | null) => void;
   onNewCategory: () => void;
+  optional?: boolean;
 }
 
-export function CategorySelector({ categories, isLoading, selectedCategoryId, onSelectCategory, onNewCategory }: CategorySelectorProps) {
+export function CategorySelector({ categories, isLoading, selectedCategoryId, onSelectCategory, onNewCategory, optional = false }: CategorySelectorProps) {
   const { t } = useI18n();
 
   return (
     <div>
       <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 block text-center mb-3">
-        {t('common.selectCategory')}
+        {t(optional ? 'common.selectCategoryOptional' : 'common.selectCategory')}
       </span>
 
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1">
@@ -42,7 +43,7 @@ export function CategorySelector({ categories, isLoading, selectedCategoryId, on
                   </div>
                 )}
                 <span className="text-lg mb-0.5">{cat.icon || t('common.folderIcon')}</span>
-                <span className="text-[11px] font-semibold truncate max-w-full text-center leading-tight">{cat.name}</span>
+                <span className="text-[11px] font-semibold truncate max-w-full text-center leading-tight dark:text-neutral-100">{cat.name}</span>
               </button>
             );
           })

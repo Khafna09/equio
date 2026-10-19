@@ -1,31 +1,25 @@
 package com.equio.backend.budgets.dto.requests;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import com.equio.backend.budgets.entities.enums.SavingsType;
+import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
-/**
- * Datos que el frontend envía para crear o actualizar un presupuesto.
- * Todo presupuesto requiere startDate.
- * Si isFixed=true, endDate puede ser null (se auto-calcula en backend a 1 mes).
- * Si isFixed=false, se espera endDate con el límite del presupuesto.
- * categoryId=null significa presupuesto global (cubre todo).
- */
 public record BudgetRequest(
-        @NotBlank String name,
-        @NotNull @Positive BigDecimal totalAmount,
+        @Pattern(regexp = "^[^\\p{Cc}\\p{Cf}\\p{Cs}]*$", message = "must not contain control characters")
+        @Size(max = 100) String name,
+        @NotNull @Positive @Digits(integer = 10, fraction = 2) BigDecimal totalAmount,
         boolean isFixed,
-        LocalDate startDate,
+        @NotNull LocalDate startDate,
         LocalDate endDate,
-        Long categoryId,
-        Long parentBudgetId,
+        @Positive Long categoryId,
+        @Positive Long parentBudgetId,
         SavingsType savingsType,
-        BigDecimal savingsValue,
+        @PositiveOrZero @Digits(integer = 10, fraction = 2) BigDecimal savingsValue,
         Boolean retroactiveCatchUp,
-        java.util.List<Long> subBudgetsToAdopt,
+        @Size(max = 100) List<@Positive Long> subBudgetsToAdopt,
         Boolean isIndependent
-) {}
+) {
+}

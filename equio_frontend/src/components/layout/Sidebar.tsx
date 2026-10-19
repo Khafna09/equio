@@ -1,8 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, WalletCards, History, Target, Settings, CircleUserRound, LogOut } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/authContextValue';
 import { cn } from '../../utils/classNames';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -11,8 +11,8 @@ export function Sidebar() {
 
   const navItems = [
     { label: t('common.dashboard'), icon: LayoutDashboard, href: '/' },
-    { label: t('common.budgets'), icon: WalletCards, href: '/budgets' },
     { label: t('common.history'), icon: History, href: '/history' },
+    { label: t('common.budgets'), icon: WalletCards, href: '/budgets' },
     { label: t('common.savingsGoals'), icon: Target, href: '/savings' },
   ];
 
@@ -20,8 +20,9 @@ export function Sidebar() {
     { label: t('common.settings'), icon: Settings, href: '/settings' },
   ];
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    // Login displays the pending revocation and retry action if the API is unreachable.
+    await logout().catch(() => undefined);
     navigate('/login');
   };
 

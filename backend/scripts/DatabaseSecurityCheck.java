@@ -1,0 +1,127 @@
+import java.nio.file.*;
+import java.sql.*;
+import java.util.*;
+
+public class DatabaseSecurityCheck {
+    public static void main(String[] args) throws Exception {
+        Map<String, String> env = readEnv(
+                args.length == 0 ? Path.of(".env") : Path.of(args[0]));
+        String url = required(env, "DB_URL");
+        String appUser = required(env, "DB_APP_USERNAME");
+
+        try (Connection admin = connect(
+                url,
+                required(env, "DB_MIGRATION_USERNAME"),
+                required(env, "DB_MIGRATION_PASSWORD"))) {
+            try (PreparedStatement role = admin.prepareStatement(
+                    "select rolsuper, rolbypassrls, rolcreatedb, rolcreaterole "
+                            + "from pg_roles where rolname = ?")) {
+                role.setString(1, appUser);
+                try (ResultSet result = role.executeQuery()) {
+                    require(result.next(), "Application role does not exist");
+                    require(!result.getBoolean(1), "Application role is superuser");
+                    require(!result.getBoolean(2), "Application role bypasses RLS");
+                    require(!result.getBoolean(3), "Application role can create DBs");
+                    require(!result.getBoolean(4), "Application role can create roles");
+                }
+            }
+
+            try (PreparedStatement rls = admin.prepareStatement(
+                    "select count(*) from pg_class "
+                            + "where relname = any (?) "
+                            + "and relrowsecurity and relforcerowsecurity")) {
+                Array tables = admin.createArrayOf(
+                        "text",
+                        new String[]{
+                                "categories",
+                                "movements",
+                                "budgets",
+                                "saving_goals",
+                                "savings_pools",
+                                "savings_pool_transactions"
+                        });
+                rls.setArray(1, tables);
+                try (ResultSet result = rls.executeQuery()) {
+                    result.next();
+                    require(result.getInt(1) == 6,
+                            "RLS is not forced on all tenant tables");
+                }
+            }
+
+            try (PreparedStatement privilege = admin.prepareStatement(
+                    "select has_schema_privilege(?, 'public', 'CREATE')")) {
+                privilege.setString(1, appUser);
+                try (ResultSet result = privilege.executeQuery()) {
+                    result.next();
+                    require(!result.getBoolean(1),
+                            "Application role can create schema objects");
+                }
+            }
+        }
+
+        try (Connection application = connect(
+                url,
+                appUser,
+                required(env, "DB_APP_PASSWORD"));
+             Statement statement = application.createStatement()) {
+            try (ResultSet result = statement.executeQuery("select has_table_privilege(current_user, 'public.flyway_schema_history', 'UPDATE')")) {
+                result.next();
+                require(!result.getBoolean(1), "Runtime can alter Flyway history");
+            }
+            statement.execute(
+                    "select set_config('app.current_user_id', '-1', false)");
+            for (String table : List.of(
+                    "categories",
+                    "movements",
+                    "budgets",
+                    "saving_goals", "savings_pools", "savings_pool_transactions")) {
+                try (ResultSet result = statement.executeQuery(
+                        "select count(*) from " + table)) {
+                    result.next();
+                    require(result.getLong(1) == 0,
+                            "RLS exposed rows from " + table);
+                }
+            }
+        }
+
+        System.out.println(
+                "PASS rls-force least-privilege no-bypass tenant-isolation");
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    private static Connection connect(String url, String user, String password) throws SQLException {
+        Properties properties = new Properties();
+        properties.setProperty("user", user);
+        properties.setProperty("password", password);
+        properties.setProperty("sslfactory", "org.postgresql.ssl.DefaultJavaSSLFactory");
+        return DriverManager.getConnection(url, properties);
+    }
+
+    private static Map<String, String> readEnv(Path path) throws Exception {
+        Map<String, String> values = new HashMap<>();
+        for (String line : Files.exists(path) ? Files.readAllLines(path) : List.<String>of()) {
+            if (!line.isBlank() && !line.startsWith("#") && line.contains("=")) {
+                int separator = line.indexOf('=');
+                values.put(
+                        line.substring(0, separator),
+                        line.substring(separator + 1)
+                );
+            }
+        }
+        values.putAll(System.getenv());
+        return values;
+    }
+
+    private static String required(Map<String, String> env, String name) {
+        String value = env.get(name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Missing " + name);
+        }
+        return value;
+    }
+}

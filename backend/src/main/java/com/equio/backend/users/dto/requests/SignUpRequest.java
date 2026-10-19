@@ -1,26 +1,18 @@
 package com.equio.backend.users.dto.requests;
 
-import com.equio.backend.users.entities.Role;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-
-import java.util.List;
+import jakarta.validation.constraints.*;
 
 public record SignUpRequest(
-    @NotBlank @Email
-    String email,
-    @NotBlank @Size(min = 8, max = 100)
-    String password,
-    @NotBlank @Size(max = 50)
-    String firstName,
-    @NotBlank @Size(max = 50)
-    String lastName,
-    @Size(max = 10)
-    String language,
-    @Size(max = 10)
-    String currency,
-    @Size(max = 20)
-    String theme,
-    List<Role> roles
-) {}
+        @NotBlank @Email @Size(max = 254) String email,
+        @NotBlank @Size(min = 12, max = 128) String password,
+        @NotBlank @Size(max = 50)
+        @Pattern(regexp = "^[\\p{L}\\p{M} .'-]+$", message = "contains unsupported characters")
+        String firstName,
+        @NotBlank @Size(max = 50)
+        @Pattern(regexp = "^[\\p{L}\\p{M} .'-]+$", message = "contains unsupported characters")
+        String lastName,
+        @Pattern(regexp = "^(es|en)$") String language,
+        @Pattern(regexp = "^[A-Z]{3}$") String currency,
+        @Pattern(regexp = "^(light|dark|system)$") String theme
+) {
+}

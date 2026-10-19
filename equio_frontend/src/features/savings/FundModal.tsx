@@ -1,13 +1,21 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { useSavings } from '../../hooks/useSavings';
 import type { SavingGoalResponse } from '../../types/saving.types';
 import confetti from 'canvas-confetti';
 import { useCurrency } from '../../hooks/useCurrency';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+
+// The production CSP intentionally blocks blob workers, so this short effect renders locally.
+const fireContributionConfetti = confetti.create(undefined, {
+  resize: true,
+  useWorker: false,
+});
 
 interface FundModalProps {
   isOpen: boolean;
@@ -23,22 +31,21 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
   const { symbol, formatCurrency } = useCurrency();
   const [amount, setAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const activeGoalRef = useRef<SavingGoalResponse | null>(null);
-
-  if (goal) {
-    activeGoalRef.current = goal;
-  }
-
-  const currentGoal = activeGoalRef.current;
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const currentGoal = goal;
 
   const isAdd = operation === 'ADD';
   const title = isAdd ? t('savings.addToGoal') : t('savings.withdrawFromGoal');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const numericAmount = parseFloat(amount);
-    if (!currentGoal || isNaN(numericAmount) || numericAmount <= 0) return;
+    const numericAmount = parsePositiveMoney(amount);
+    if (!currentGoal || numericAmount === null) {
+      setSubmitError(t('common.invalidAmount'));
+      return;
+    }
 
+    setSubmitError(null);
     setIsSubmitting(true);
     try {
       await fundGoal(currentGoal.id, {
@@ -46,18 +53,33 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
         operation
       });
 
-      if (isAdd) {
-        confetti({
-          particleCount: 80,
-          spread: 60,
-          origin: { y: 0.7 }
-        });
-      }
-
       onClose();
       setAmount('');
-    } catch (error) {
-      console.error('Failed to fund goal:', error);
+
+      if (isAdd) {
+        window.setTimeout(() => {
+          const contributionButton = document.querySelector<HTMLElement>(
+            `[data-contribution-goal-id="${currentGoal.id}"]`,
+          );
+          const rect = contributionButton?.getBoundingClientRect() ?? triggerRect;
+          const origin = rect
+            ? {
+                x: Math.min(1, Math.max(0, (rect.left + rect.width / 2) / window.innerWidth)),
+                y: Math.min(1, Math.max(0, (rect.top + rect.height / 2) / window.innerHeight)),
+              }
+            : { x: 0.5, y: 0.72 };
+
+          void fireContributionConfetti({
+            particleCount: 90,
+            spread: 70,
+            startVelocity: 35,
+            origin,
+            zIndex: 99999,
+          });
+        }, 180);
+      }
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('savings.updateError'), t));
     } finally {
       setIsSubmitting(false);
     }
@@ -80,14 +102,31 @@ export function FundModal({ isOpen, onClose, goal, operation, triggerRect }: Fun
           <input 
             type="number" 
             step="0.01"
+            min="0.01"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => {
+              setAmount(e.target.value);
+              setSubmitError(null);
+            }}
             placeholder="0.00"
             className="text-6xl font-bold text-center text-neutral-900 dark:text-white bg-transparent outline-none w-full placeholder:text-neutral-300 dark:placeholder:text-neutral-600"
             required
-            max={!isAdd ? currentGoal?.currentAmount : undefined}
+            max={currentGoal
+              ? Math.min(
+                  MAX_MONEY_AMOUNT,
+                  isAdd
+                    ? Math.max(0, currentGoal.targetAmount - currentGoal.currentAmount)
+                    : currentGoal.currentAmount,
+                )
+              : MAX_MONEY_AMOUNT}
           />
         </div>
+
+        {submitError ? (
+          <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+            {submitError}
+          </div>
+        ) : null}
 
         <Button 
           type="submit" 

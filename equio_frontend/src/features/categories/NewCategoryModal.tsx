@@ -2,7 +2,7 @@ import { Modal } from '../../components/ui/Modal';
 import type { CategoryResponse } from '../../types/category.types';
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
 import { NewCategoryForm } from './NewCategoryForm';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface NewCategoryModalProps {
   isOpen: boolean;

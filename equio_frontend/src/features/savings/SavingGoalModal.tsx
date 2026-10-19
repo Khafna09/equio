@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
+import { DatePicker } from '../../components/ui/DatePicker';
 import { Button } from '../../components/ui/Button';
 import { useSavings } from '../../hooks/useSavings';
 import { fetchUnsplashGoalImage } from '../../utils/unsplash';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface SavingGoalModalProps {
   isOpen: boolean;
@@ -21,34 +24,45 @@ export function SavingGoalModal({ isOpen, onClose, triggerRect }: SavingGoalModa
   const [targetAmount, setTargetAmount] = useState('');
   const [deadline, setDeadline] = useState('');
   const [tag, setTag] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !targetAmount) return;
-    const goalData = {
-      name,
-      targetAmount: parseFloat(targetAmount),
-      deadline: deadline || undefined,
-      tag: tag || undefined,
-    };
-    onClose();
-    setName('');
-    setTargetAmount('');
-    setDeadline('');
-    setTag('');
-    (async () => {
-      try {
-        const searchQuery = [goalData.name, goalData.tag].filter(Boolean).join(' ');
-        const imageUrl = await fetchUnsplashGoalImage(searchQuery);
+    const cleanName = name.trim();
+    const parsedTarget = parsePositiveMoney(targetAmount);
+    if (!cleanName) {
+      setSubmitError(t('common.invalidForm'));
+      return;
+    }
+    if (parsedTarget === null) {
+      setSubmitError(t('common.invalidAmount'));
+      return;
+    }
 
-        await createGoal({
-          ...goalData,
-          imageUrl
-        });
-      } catch (error) {
-        console.error('Background goal creation failed:', error);
-      }
-    })();
+    const goalData = {
+      name: cleanName,
+      targetAmount: parsedTarget,
+      deadline: deadline || undefined,
+      tag: tag.trim() || undefined,
+    };
+
+    setSubmitError(null);
+    setIsSubmitting(true);
+    try {
+      const searchQuery = [goalData.name, goalData.tag].filter(Boolean).join(' ');
+      const imageUrl = await fetchUnsplashGoalImage(searchQuery);
+      await createGoal({ ...goalData, imageUrl });
+      setName('');
+      setTargetAmount('');
+      setDeadline('');
+      setTag('');
+      onClose();
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('savings.createError'), t));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -59,6 +73,7 @@ export function SavingGoalModal({ isOpen, onClose, triggerRect }: SavingGoalModa
           placeholder={t('savings.goalExample')} 
           value={name}
           onChange={(e) => setName(e.target.value)}
+          maxLength={100}
           required
         />
         
@@ -66,6 +81,8 @@ export function SavingGoalModal({ isOpen, onClose, triggerRect }: SavingGoalModa
           label={t('savings.targetAmount')} 
           type="number" 
           step="0.01"
+          min="0.01"
+          max={MAX_MONEY_AMOUNT}
           placeholder="0.00" 
           value={targetAmount}
           onChange={(e) => setTargetAmount(e.target.value)}
@@ -77,20 +94,27 @@ export function SavingGoalModal({ isOpen, onClose, triggerRect }: SavingGoalModa
           placeholder={t('savings.tagExample')} 
           value={tag}
           onChange={(e) => setTag(e.target.value.toUpperCase())}
-          maxLength={15}
+          maxLength={50}
         />
+          <DatePicker
+            label={t('savings.deadline')}
+            value={deadline}
+            onChange={setDeadline}
+            minDate={new Date()}
 
-        <Input 
-          label={t('savings.deadline')} 
-          type="date" 
-          value={deadline}
-          onChange={(e) => setDeadline(e.target.value)}
-        />
+          />
+
+        {submitError ? (
+          <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+            {submitError}
+          </div>
+        ) : null}
 
         <Button 
           type="submit" 
           variant="primary" 
           className="w-full mt-4"
+          isLoading={isSubmitting}
         >
           {t('savings.createGoal')}
         </Button>

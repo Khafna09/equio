@@ -1,129 +1,44 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
-import { useMovements } from '../../hooks/useMovements';
+import { useMovementPages } from '../../hooks/useMovementPages';
 import { useCategories } from '../../hooks/useCategories';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { TrendingDown, TrendingUp, Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, GripVertical, RotateCcw } from 'lucide-react';
+import { TrendingDown, TrendingUp, Calendar as CalendarIcon, X, GripVertical, ChevronDown, RotateCw } from 'lucide-react';
+import { Button } from '../../components/ui/Button';
 import { EditMovementModal } from '../movements/EditMovementModal';
-import { format, isToday, isYesterday, parseISO, isValid, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, addMonths, subMonths } from 'date-fns';
+import { format, isToday, isYesterday, parseISO, isValid } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import { DndContext, useDraggable, useDroppable, DragOverlay, useSensor, useSensors, PointerSensor, KeyboardSensor, pointerWithin } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { ProgressiveBlur } from '../../components/magicui/progressive-blur';
 import { StaggeredEntry } from '../../components/ui/StaggeredEntry';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card';
+import { useSharedElementModal } from '../../hooks/useSharedElementModal';
+import { useCurrency } from '../../hooks/useCurrency';
+import { useTimeFormat } from '../../hooks/useTimeFormat';
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { MovementFilters, MovementResponse } from '../../types/movement.types';
+import { HistoryCalendar } from './HistoryCalendar';
 
-function CalendarWidget({
-  movements,
-  selectedDate,
-  onSelectDate,
-  language
-}: {
-  movements: any[];
-  selectedDate: string | null;
-  onSelectDate: (dateStr: string | null) => void;
-  language: 'es' | 'en';
-}) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+type MainMovementFilter = 'ALL' | 'INCOME' | 'EXPENSE';
+type HistoryFilterType = MainMovementFilter | 'CATEGORY';
 
-  const movementDates = useMemo(() => {
-    const set = new Set<string>();
-    movements.forEach(m => {
-      const d = m.date ? m.date.substring(0, 10) : m.createdAt?.substring(0, 10);
-      if (d) set.add(d);
-    });
-    return set;
-  }, [movements]);
+interface HistoryColumn {
+  id: string;
+  type: HistoryFilterType;
+  label: string;
+  categoryId?: number;
+}
 
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
-  const days = eachDayOfInterval({ start: startDate, end: endDate });
+interface DragFilterData {
+  label: string;
+  type: HistoryFilterType;
+}
 
-  const weekDays = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
-
-  return (
-    <Card className="p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-neutral-900 dark:text-white text-sm capitalize">
-          {format(currentMonth, 'MMMM yyyy', { locale: language === 'en' ? enUS : es })}
-        </h3>
-        <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}
-            className="p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500 dark:text-neutral-400 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}
-            className="p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500 dark:text-neutral-400 transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-1 text-center">
-        {weekDays.map(d => (
-          <span key={d} className="text-[10px] font-semibold text-neutral-400 dark:text-neutral-400 uppercase">
-            {d}
-          </span>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1 text-center text-xs">
-        {days.map((day) => {
-          const dateStr = format(day, 'yyyy-MM-dd');
-          const isSelected = selectedDate === dateStr;
-          const inMonth = isSameMonth(day, monthStart);
-          const hasMovs = movementDates.has(dateStr);
-          const isCurrentDay = isToday(day);
-
-          return (
-            <button
-              key={dateStr}
-              type="button"
-              onClick={() => onSelectDate(isSelected ? null : dateStr)}
-              className={`
-                relative h-8 rounded-xl flex items-center justify-center font-medium transition-all
-                ${!inMonth 
-                  ? 'text-neutral-300 dark:text-neutral-600' 
-                  : isSelected 
-                    ? 'bg-primary-600 text-white font-bold shadow-md shadow-primary-500/30' 
-                    : isCurrentDay 
-                      ? 'bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300 font-bold border border-primary-200 dark:border-primary-800' 
-                      : 'text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700/60'
-                }
-              `}
-            >
-              {format(day, 'd')}
-              {hasMovs && !isSelected && (
-                <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-secondary-500" />
-              )}
-              {hasMovs && isSelected && (
-                <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-white" />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {selectedDate && (
-        <button
-          type="button"
-          onClick={() => onSelectDate(null)}
-          className="w-full text-xs text-primary-600 dark:text-primary-400 font-medium hover:underline flex items-center justify-center gap-1 pt-1 border-t border-neutral-100 dark:border-neutral-700"
-        >
-          <RotateCcw className="w-3 h-3" /> {language === 'en' ? 'View all days' : 'Ver todos los d?as'}
-        </button>
-      )}
-    </Card>
-  );
+function isHistoryFilterType(value: unknown): value is HistoryFilterType {
+  return value === 'ALL' || value === 'INCOME' || value === 'EXPENSE' || value === 'CATEGORY';
 }
 
 function DraggableFilter({
@@ -175,11 +90,14 @@ function DraggableFilter({
   );
 }
 
-import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../components/ui/hover-card';
-
-function formatMovementSubtitle(mov: any) {
-  const note = mov.description?.trim();
-  const hasNote = Boolean(note);
+function getMovementDisplayInfo(
+  mov: MovementResponse,
+  formatTime: (date: Date) => string,
+  t: (key: string, params?: Record<string, string | number>) => string
+) {
+  const note = mov.description?.trim() ?? '';
+  const hasNote = note.length > 0;
+  const hasCategory = Boolean(mov.categoryName?.trim());
 
   let timeStr = '';
   const dateStr = mov.date || mov.createdAt;
@@ -187,62 +105,83 @@ function formatMovementSubtitle(mov: any) {
     try {
       const d = parseISO(dateStr);
       if (isValid(d)) {
-        timeStr = format(d, 'HH:mm');
+        timeStr = formatTime(d);
       }
-    } catch { }
+    } catch {
+      timeStr = '';
+    }
     if (!timeStr && typeof dateStr === 'string') {
       const match = dateStr.match(/T(\d{2}:\d{2})/);
       if (match) timeStr = match[1];
     }
   }
 
-  if (!hasNote) {
-    return {
-      hasNote: false,
-      text: timeStr,
-      fullText: ''
-    };
+  let title: string;
+  let subText: string;
+  let hasTooltip = false;
+  let tooltipTitle = '';
+  let tooltipContent = '';
+
+  if (hasCategory) {
+    title = mov.categoryName!;
+    if (hasNote) {
+      subText = timeStr ? `${timeStr} | ${note}` : note;
+      hasTooltip = true;
+      tooltipTitle = mov.categoryName!;
+      tooltipContent = timeStr ? `${timeStr} | ${note}` : note;
+    } else {
+      subText = timeStr;
+    }
+  } else {
+    if (hasNote) {
+      title = note;
+      subText = timeStr;
+      hasTooltip = false;
+      tooltipTitle = mov.type === 'INCOME' ? t('common.otherIncome') : t('common.otherExpenses');
+      tooltipContent = note;
+    } else {
+      title = mov.type === 'INCOME' ? t('common.otherIncome') : t('common.otherExpenses');
+      subText = timeStr;
+    }
   }
 
-  const prefix = timeStr ? `${timeStr} | ` : '';
-
   return {
-    hasNote: true,
-    text: `${prefix}${note}`,
-    fullText: `${prefix}${note}`
+    title,
+    subText,
+    hasTooltip,
+    tooltipTitle,
+    tooltipContent,
   };
 }
 
-import { useSharedElementModal } from '../../hooks/useSharedElementModal';
-
-import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
 
 function MovementList({
-  movements,
+  filters,
   title,
   headerContent,
   onClose,
   isRemovable,
   onMovementClick
 }: {
-  movements: any[];
+  filters: MovementFilters;
   title?: string;
   headerContent?: React.ReactNode;
   onClose?: () => void;
   isRemovable?: boolean;
-  onMovementClick: (movement: any, e: React.MouseEvent<HTMLButtonElement>) => void;
+  onMovementClick: (movement: MovementResponse, e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const { formatCurrency } = useCurrency();
+  const { formatTime } = useTimeFormat();
   const { t, language } = useI18n();
+  const { movements, isLoading, error, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useMovementPages(filters);
 
   const groupedMovements = useMemo(() => {
-    return movements.reduce((groups, mov) => {
+    return movements.reduce<Record<string, MovementResponse[]>>((groups, mov) => {
       const date = mov.date ? mov.date.substring(0, 10) : (mov.createdAt ? mov.createdAt.substring(0, 10) : '');
       if (!groups[date]) groups[date] = [];
       groups[date].push(mov);
       return groups;
-    }, {} as Record<string, typeof movements>);
+    }, {});
   }, [movements]);
 
   const sortedDateGroups = useMemo(() => {
@@ -250,8 +189,8 @@ function MovementList({
       .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
       .map(([date, movs]) => [
         date,
-        [...(movs as any[])].sort((a, b) => (b.id || 0) - (a.id || 0))
-      ] as [string, any[]]);
+        [...movs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || '') || b.id - a.id)
+      ] as [string, MovementResponse[]]);
   }, [groupedMovements]);
 
   const getDateLabel = (dateStr: string) => {
@@ -280,7 +219,13 @@ function MovementList({
         )}
       </div>
 
-      {movements.length === 0 ? (
+      {error && (
+        <div role="alert" className="mb-3 space-y-2 text-sm text-danger-600 dark:text-rose-400">
+          <p>{error}</p>
+          <Button variant="outline" onClick={() => void refetch()} icon={<RotateCw />}>{t('common.retry')}</Button>
+        </div>
+      )}
+      {isLoading ? <p className="py-8 text-center text-sm text-neutral-500">{t('history.loading')}</p> : error && movements.length === 0 ? null : movements.length === 0 ? (
         <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 bg-neutral-100/50 dark:bg-neutral-900/50 rounded-3xl border border-dashed border-primary-200/50 dark:border-neutral-700/50">
           {t('history.noMovements')}
         </div>
@@ -293,7 +238,7 @@ function MovementList({
               </h4>
               <StaggeredEntry className="space-y-2">
                 {movs.map((mov) => {
-                  const subInfo = formatMovementSubtitle(mov);
+                  const display = getMovementDisplayInfo(mov, formatTime, t);
 
                   const cardContent = (
                     <button
@@ -310,10 +255,10 @@ function MovementList({
                             {mov.categoryIcon || (mov.type === 'INCOME' ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-rose-500" />)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-neutral-900 dark:text-white text-sm leading-tight">{mov.categoryName}</p>
-                            {subInfo.text && (
+                            <p className="font-semibold text-neutral-900 dark:text-white text-sm leading-tight">{display.title}</p>
+                            {display.subText && (
                               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug mt-0.5 break-words">
-                                {subInfo.text}
+                                {display.subText}
                               </p>
                             )}
                           </div>
@@ -325,7 +270,7 @@ function MovementList({
                     </button>
                   );
 
-                  if (!subInfo.hasNote) {
+                  if (!display.hasTooltip) {
                     return <div key={mov.id}>{cardContent}</div>;
                   }
 
@@ -336,8 +281,8 @@ function MovementList({
                       </HoverCardTrigger>
                       <HoverCardContent side="top" className="w-64 border-none shadow-xl dark:bg-neutral-800 dark:text-white">
                         <div className="space-y-1">
-                          <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{mov.categoryName}</h4>
-                          <p className="text-sm text-neutral-500 dark:text-neutral-400">{subInfo.fullText}</p>
+                          <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{display.tooltipTitle}</h4>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">{display.tooltipContent}</p>
                         </div>
                       </HoverCardContent>
                     </HoverCard>
@@ -346,6 +291,12 @@ function MovementList({
               </StaggeredEntry>
             </div>
           ))}
+          {hasNextPage && (
+            <Button variant="outline" className="w-full" onClick={() => void fetchNextPage()}
+              isLoading={isFetchingNextPage} icon={<ChevronDown />}>
+              {t('history.loadMore')}
+            </Button>
+          )}
         </div>
       )}
 
@@ -355,7 +306,6 @@ function MovementList({
 }
 
 export function HistoryPage() {
-  const { movements, isLoading } = useMovements();
   const { categories } = useCategories();
   const { triggerRect, captureTrigger } = useSharedElementModal();
   const { t, language } = useI18n();
@@ -370,14 +320,14 @@ export function HistoryPage() {
   );
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [columns, setColumns] = useState<any[]>([{ id: 'col-main', type: 'ALL', label: t('common.all') }]);
-  const [mainColOverride, setMainColOverride] = useState<'ALL' | 'INCOME' | 'EXPENSE' | null>(null);
+  const [columns, setColumns] = useState<HistoryColumn[]>([{ id: 'col-main', type: 'ALL', label: t('common.all') }]);
+  const [mainColOverride, setMainColOverride] = useState<MainMovementFilter | null>(null);
 
   const columnsContainerRef = useRef<HTMLDivElement>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const [activeDragData, setActiveDragData] = useState<any>(null);
+  const [activeDragData, setActiveDragData] = useState<DragFilterData | null>(null);
 
-  const [selectedMovement, setSelectedMovement] = useState<any>(null);
+  const [selectedMovement, setSelectedMovement] = useState<MovementResponse | null>(null);
 
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: 'board' });
 
@@ -391,7 +341,7 @@ export function HistoryPage() {
     return 'ALL';
   }, [mainColOverride, hasExpenseCol, hasIncomeCol]);
 
-  const addColumn = (id: string, type: string, label: string) => {
+  const addColumn = (id: string, type: HistoryFilterType, label: string) => {
     if (columns.length >= 4) return;
     if (columns.some(c => c.id === id)) return;
 
@@ -406,8 +356,13 @@ export function HistoryPage() {
   };
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveDragId(event.active.id as string);
-    setActiveDragData(event.active.data.current);
+    setActiveDragId(String(event.active.id));
+    const data = event.active.data.current;
+    setActiveDragData(
+      typeof data?.label === 'string' && isHistoryFilterType(data.type)
+        ? { label: data.label, type: data.type }
+        : null
+    );
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -418,12 +373,14 @@ export function HistoryPage() {
     const isOverBoard = Boolean(over && (over.id === 'board' || over.id.toString().startsWith('col-')));
     const isDraggedRight = delta.x > 80;
 
-    if ((isOverBoard || isDraggedRight) && columns.length < 4) {
-      addColumn(
-        active.id as string,
-        active.data.current?.type,
-        active.data.current?.label
-      );
+    const data = active.data.current;
+    if (
+      (isOverBoard || isDraggedRight)
+      && columns.length < 4
+      && typeof data?.label === 'string'
+      && isHistoryFilterType(data.type)
+    ) {
+      addColumn(String(active.id), data.type, data.label);
     }
   };
 
@@ -456,24 +413,14 @@ export function HistoryPage() {
     setColumns(prev => prev.filter(c => c.id !== id));
   };
 
-  const getMovementsForColumn = (col: any) => {
-    let list = movements;
-
-    if (selectedDate) {
-      list = list.filter(m => {
-        const d = m.date ? m.date.substring(0, 10) : m.createdAt?.substring(0, 10);
-        return d === selectedDate;
-      });
-    }
-
-    if (col.id === 'col-main') {
-      if (effectiveMainType === 'ALL') return list;
-      return list.filter(m => m.type === effectiveMainType);
-    }
-    if (col.type === 'EXPENSE') return list.filter(m => m.type === 'EXPENSE');
-    if (col.type === 'INCOME') return list.filter(m => m.type === 'INCOME');
-    if (col.type === 'CATEGORY') return list.filter(m => m.categoryId === col.categoryId);
-    return list;
+  const getFiltersForColumn = (col: HistoryColumn): MovementFilters => {
+    const type = col.id === 'col-main' ? effectiveMainType : col.type;
+    return {
+      type: type === 'INCOME' || type === 'EXPENSE' ? type : undefined,
+      categoryId: col.type === 'CATEGORY' ? col.categoryId : undefined,
+      startDate: selectedDate ?? undefined,
+      endDate: selectedDate ?? undefined,
+    };
   };
 
   const selectedDateLabel = useMemo(() => {
@@ -483,13 +430,13 @@ export function HistoryPage() {
     } catch {
       return selectedDate;
     }
-  }, [selectedDate]);
+  }, [language, selectedDate]);
 
-  const mainSwitchOptions = useMemo(() => {
+  const mainSwitchOptions = useMemo<Array<{ id: MainMovementFilter; label: string }>>(() => {
     if (hasExpenseCol) return [{ id: 'ALL', label: t('common.all') }, { id: 'INCOME', label: t('common.income') }];
     if (hasIncomeCol) return [{ id: 'ALL', label: t('common.all') }, { id: 'EXPENSE', label: t('common.expenses') }];
     return [{ id: 'ALL', label: t('common.all') }, { id: 'INCOME', label: t('common.income') }, { id: 'EXPENSE', label: t('common.expenses') }];
-  }, [hasExpenseCol, hasIncomeCol]);
+  }, [hasExpenseCol, hasIncomeCol, t]);
 
   return (
     <DndContext
@@ -508,7 +455,7 @@ export function HistoryPage() {
           {selectedDateLabel && (
             <div className="flex items-center gap-2 bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 px-4 py-2 rounded-2xl text-sm font-semibold shadow-sm">
               <CalendarIcon className="w-4 h-4 text-primary-500 dark:text-primary-400" />
-              <span>Día: {selectedDateLabel}</span>
+              <span>{t('history.day', { date: selectedDateLabel })}</span>
               <button
                 onClick={() => setSelectedDate(null)}
                 className="ml-2 hover:bg-primary-100 dark:hover:bg-primary-900 p-1 rounded-full text-primary-600 dark:text-primary-300 transition-colors"
@@ -522,8 +469,7 @@ export function HistoryPage() {
 
         <div className="flex gap-6 h-full min-h-[500px]">
           <div className="w-[280px] shrink-0 space-y-4 flex flex-col">
-            <CalendarWidget
-              movements={movements}
+            <HistoryCalendar
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
               language={language}
@@ -552,7 +498,7 @@ export function HistoryPage() {
               </div>
 
               <div className="border-t border-neutral-100 dark:border-neutral-700/60 my-3 pt-3">
-                <span className="text-xs text-neutral-400 font-semibold uppercase block mb-2">Categorías</span>
+                <span className="text-xs text-neutral-400 font-semibold uppercase block mb-2">{t('history.categories')}</span>
                 <div className="max-h-[220px] overflow-y-auto pr-1 flex flex-wrap gap-1.5">
                   {categories.map(cat => (
                     <DraggableFilter
@@ -573,9 +519,6 @@ export function HistoryPage() {
             ref={setDroppableRef}
             className={`flex-1 flex gap-6 overflow-x-auto pb-4 px-4 pt-2 -mx-4 rounded-3xl transition-colors min-h-[450px] ${isOver ? 'bg-primary-50 dark:bg-primary-950/40 border-2 border-dashed border-primary-200 dark:border-primary-800' : 'bg-transparent'}`}
           >
-            {isLoading ? (
-              <div className="text-neutral-500 dark:text-neutral-400 animate-pulse w-full text-center mt-12">{t('history.loading')}</div>
-            ) : (
               <div ref={columnsContainerRef} className="flex gap-6 h-full items-start w-full min-w-max">
                 {columns.map((col, index) => (
                   <MovementList
@@ -587,7 +530,7 @@ export function HistoryPage() {
                           <button
                             key={opt.id}
                             type="button"
-                            onClick={() => setMainColOverride(opt.id as any)}
+                            onClick={() => setMainColOverride(opt.id)}
                             className={`px-3 py-1 rounded-lg transition-colors ${effectiveMainType === opt.id ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'}`}
                           >
                             {opt.label}
@@ -595,7 +538,7 @@ export function HistoryPage() {
                         ))}
                       </div>
                     ) : undefined}
-                    movements={getMovementsForColumn(col)}
+                    filters={getFiltersForColumn(col)}
                     isRemovable={index !== 0}
                     onClose={() => removeColumn(col.id)}
                     onMovementClick={(mov, e) => {
@@ -611,7 +554,6 @@ export function HistoryPage() {
                   </div>
                 )}
               </div>
-            )}
           </div>
         </div>
       </div>

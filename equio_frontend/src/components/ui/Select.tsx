@@ -2,25 +2,28 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '../../utils/classNames';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
-export interface SelectOption {
-  value: string | number;
+type SelectValue = string | number;
+
+export interface SelectOption<T extends SelectValue = SelectValue> {
+  value: T;
   label: React.ReactNode;
   icon?: React.ReactNode;
 }
 
-interface SelectProps {
-  value: string | number;
-  onChange: (value: any) => void;
-  options: SelectOption[];
+interface SelectProps<T extends SelectValue> {
+  value: T;
+  onChange: (value: T) => void;
+  options: SelectOption<T>[];
   placeholder?: string;
   className?: string;
   contentClassName?: string;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
-export function Select({
+export function Select<T extends SelectValue>({
   value,
   onChange,
   options,
@@ -28,14 +31,14 @@ export function Select({
   className,
   contentClassName,
   disabled = false,
-}: SelectProps) {
+  ariaLabel,
+}: SelectProps<T>) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find((opt) => String(opt.value) === String(value));
 
-  // Cerrar al hacer clic fuera del componente
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -54,6 +57,7 @@ export function Select({
     <div ref={containerRef} className="relative w-full">
       <button
         type="button"
+        aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(

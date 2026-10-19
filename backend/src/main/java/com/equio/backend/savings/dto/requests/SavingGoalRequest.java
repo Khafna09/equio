@@ -1,22 +1,23 @@
 package com.equio.backend.savings.dto.requests;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/**
- * Datos para crear o actualizar una meta de ahorro.
- * budgetId es opcional: vincula la meta a un presupuesto existente.
- * deadline es opcional: si está presente, indica cuándo se quiere alcanzar la meta.
- */
 public record SavingGoalRequest(
-        @NotBlank String name,
-        @NotNull @Positive BigDecimal targetAmount,
-        LocalDate deadline,
-        Long budgetId,
-        String tag,
+        @Pattern(regexp = "^[^\\p{Cc}\\p{Cf}\\p{Cs}]*$", message = "must not contain control characters")
+        @NotBlank @Size(max = 100) String name,
+        @NotNull @Positive @Digits(integer = 10, fraction = 2) BigDecimal targetAmount,
+        @FutureOrPresent LocalDate deadline,
+        @Positive Long budgetId,
+        @Pattern(regexp = "^[^\\p{Cc}\\p{Cf}\\p{Cs}]*$", message = "must not contain control characters")
+        @Size(max = 50) String tag,
+        @Size(max = 500)
+        @Pattern(
+                regexp = "^https://images\\.unsplash\\.com/[^\\s]{1,450}$",
+                message = "must be a valid Unsplash image URL"
+        )
         String imageUrl
-) {}
+) {
+}

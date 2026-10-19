@@ -1,34 +1,156 @@
 spring:
   config:
     import: optional:file:.env[.properties]
+  profiles:
+    default: dev
   application:
-    name: backend
+    name: equio-backend
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/equio}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:khafna09}
+    url: ${DB_URL}
+    username: ${DB_APP_USERNAME}
+    password: ${DB_APP_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:0}
+      connection-timeout: 10000
+      validation-timeout: 3000
+      idle-timeout: 60000
+      max-lifetime: 1800000
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    url: ${DB_MIGRATION_URL:${DB_URL}}
+    user: ${DB_MIGRATION_USERNAME}
+    password: ${DB_MIGRATION_PASSWORD}
+    baseline-on-migrate: true
+    baseline-version: 1
+    validate-migration-naming: true
+    placeholders:
+      app-role: ${DB_APP_USERNAME}
   jpa:
+    open-in-view: false
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:update}
-    show-sql: ${JPA_SHOW_SQL:false}
+      ddl-auto: validate
+    show-sql: false
     properties:
       hibernate:
-        format_sql: ${JPA_FORMAT_SQL:false}
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+  jackson:
+    factory:
+      constraints:
+        read:
+          max-nesting-depth: 16
+          max-document-length: ${HTTP_MAX_REQUEST_BYTES:32768}
+          max-token-count: 2048
+          max-number-length: 32
+          max-string-length: 4096
+          max-name-length: 64
+    deserialization:
+      fail-on-unknown-properties: true
+  transaction:
+    default-timeout: 30s
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${PORT:${SERVER_PORT:8081}}
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+  tomcat:
+    # With Tomcat's default upload behavior this also bounds request-body reads.
+    connection-timeout: 10s
+    keep-alive-timeout: 15s
+    max-keep-alive-requests: 100
+    max-http-form-post-size: 1MB
+    max-swallow-size: 1MB
+    threads:
+      max: ${HTTP_MAX_THREADS:50}
+      min-spare: ${HTTP_MIN_SPARE_THREADS:4}
+    max-connections: ${HTTP_MAX_CONNECTIONS:200}
+    accept-count: ${HTTP_ACCEPT_COUNT:50}
+  compression:
+    enabled: true
+    min-response-size: 1024
+    mime-types: application/json,application/problem+json,text/plain,text/css,application/javascript,image/svg+xml
 
 app:
+  features:
+    advanced-budgets-enabled: ${ADVANCED_BUDGETS_ENABLED:true}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   jwt:
-    secret: ${JWT_SECRET:EquioLocalDevelopmentSecretKeyForHS256Only}
-    expiration-ms: ${JWT_EXPIRATION_MS:36000000}
+    secret-base64: ${JWT_SECRET_BASE64}
+    issuer: ${JWT_ISSUER:equio-api}
+    audience: ${JWT_AUDIENCE:equio-web}
+    access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
+  refresh-token:
+    expiration-days: ${REFRESH_TOKEN_EXPIRATION_DAYS:30}
+    cookie-name: ${REFRESH_TOKEN_COOKIE_NAME:equio_refresh}
+    cookie-secure: ${COOKIE_SECURE:false}
+    same-site: Strict
+    domain: ${COOKIE_DOMAIN:}
+  security:
+    max-request-bytes: ${HTTP_MAX_REQUEST_BYTES:32768}
+    require-https: ${REQUIRE_HTTPS:false}
+    swagger-public: ${SWAGGER_PUBLIC:true}
+    bcrypt-strength: ${BCRYPT_STRENGTH:12}
+    metadata-hash-key-base64: ${METADATA_HASH_KEY_BASE64}
+    global-rate-limit-per-minute: ${GLOBAL_RATE_LIMIT_PER_MINUTE:300}
+    sign-up-rate-limit-per-minute: ${SIGN_UP_RATE_LIMIT_PER_MINUTE:5}
+    image-search-rate-limit-per-minute: ${IMAGE_SEARCH_RATE_LIMIT_PER_MINUTE:30}
+    login-rate-limit-per-minute: ${LOGIN_RATE_LIMIT_PER_MINUTE:10}
+    account-lock-attempts: ${ACCOUNT_LOCK_ATTEMPTS:5}
+    account-lock-minutes: ${ACCOUNT_LOCK_MINUTES:15}
+    database-auto-create-enabled: ${DATABASE_AUTO_CREATE_ENABLED:false}
+    rls-enabled: true
+  unsplash:
+    access-key: ${UNSPLASH_ACCESS_KEY:}
+  reports:
+    max-movements: ${REPORT_MAX_MOVEMENTS:2000}
+    max-concurrent-pdfs: ${REPORT_MAX_CONCURRENT_PDFS:1}
+  movements:
+    max-query-results: ${MOVEMENT_QUERY_MAX_RESULTS:5000}
+  observability:
+    slow-request-ms: ${SLOW_REQUEST_MS:2000}
+    request-logging-enabled: ${HTTP_REQUEST_LOGS:true}
 
 springdoc:
   api-docs:
+    enabled: ${SWAGGER_PUBLIC:true}
     path: /v3/api-docs
   swagger-ui:
+    enabled: ${SWAGGER_PUBLIC:true}
     path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+
+logging:
+  level:
+    root: INFO
+    com.equio.backend: ${APP_LOG_LEVEL:INFO}
+    org.springframework.security: WARN
+    org.hibernate.orm.jdbc.error: "OFF"

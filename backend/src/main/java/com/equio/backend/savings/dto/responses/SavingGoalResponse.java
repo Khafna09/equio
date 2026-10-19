@@ -14,10 +14,10 @@ public record SavingGoalResponse(
         String name,
         BigDecimal targetAmount,
         BigDecimal currentAmount,
-        BigDecimal remainingAmount,     // targetAmount - currentAmount (calculado)
-        double progressPercentage,      // (currentAmount / targetAmount) * 100 (calculado)
+        BigDecimal remainingAmount,
+        double progressPercentage,
         LocalDate deadline,
-        boolean isCompleted,            // currentAmount >= targetAmount
+        boolean isCompleted,
         Long budgetId,
         String budgetName,
         LocalDateTime createdAt,

@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: equio-backend
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    numInstances: 1
+    autoDeployTrigger: checksPass
+    healthCheckPath: /actuator/health/liveness
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: TZ
+        value: America/Lima
+      - key: DB_URL
+        sync: false
+      - key: DB_APP_USERNAME
+        sync: false
+      - key: DB_APP_PASSWORD
+        sync: false
+      - key: DB_MIGRATION_USERNAME
+        sync: false
+      - key: DB_MIGRATION_PASSWORD
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: JWT_SECRET_BASE64
+        generateValue: true
+      - key: METADATA_HASH_KEY_BASE64
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: REQUIRE_HTTPS
+        value: "true"
+      - key: SWAGGER_PUBLIC
+        value: "false"
+      - key: FLYWAY_ENABLED
+        value: "true"
+      - key: DB_POOL_MAX_SIZE
+        value: "5"
+      - key: DB_POOL_MIN_IDLE
+        value: "0"
+      - key: UNSPLASH_ACCESS_KEY
+        sync: false

@@ -3,7 +3,7 @@ import { ArrowDownRight, ArrowUpRight, DollarSign } from 'lucide-react';
 import { NumberTicker } from '../../components/ui/number-ticker';
 import { BorderBeam } from '../../components/ui/border-beam';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
 
 interface BalanceCardProps {
   title: string;
@@ -16,7 +16,7 @@ interface BalanceCardProps {
 
 export function BalanceCard({ title, amount, type, globalBudgetAmount, savingsDeduction }: BalanceCardProps) {
   const { symbol, formatCurrency } = useCurrency();
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const config = {
     balance: {
       icon: <DollarSign className="w-5 h-5" />,
@@ -49,7 +49,7 @@ export function BalanceCard({ title, amount, type, globalBudgetAmount, savingsDe
       <div className="relative z-10">
         <p className={`text-3xl font-bold tracking-tight ${config.textColor}`}>
           {type === 'balance' ? (
-            <>{symbol}<NumberTicker value={amount} decimalPlaces={2} delay={0.2} /></>
+            <>{symbol}<NumberTicker value={amount} decimalPlaces={2} delay={0.2} locale={language === 'es' ? 'es-PE' : 'en-US'} /></>
           ) : (
             formatCurrency(amount)
           )}

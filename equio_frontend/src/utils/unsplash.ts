@@ -1,11 +1,4 @@
-type UnsplashSearchResponse = {
-  results?: Array<{
-    urls?: {
-      regular?: string;
-      small?: string;
-    };
-  }>;
-};
+import apiClient from '../api/apiClient';
 
 const FALLBACK_IMAGES: Record<string, string[]> = {
   japan: [
@@ -31,63 +24,49 @@ const FALLBACK_IMAGES: Record<string, string[]> = {
   ],
 };
 
-function getRefinedSearchQuery(rawQuery: string): string {
-  let q = rawQuery.trim();
-  if (!q) return 'savings money';
-  q = q.replace(/\bviaje a\b/gi, 'travel')
-       .replace(/\bviaje\b/gi, 'travel')
-       .replace(/\bvacaciones en\b/gi, 'vacation')
-       .replace(/\bvacaciones\b/gi, 'vacation')
-       .replace(/\bcasa\b/gi, 'house')
-       .replace(/\bcarro\b|\bauto\b|\bcoche\b/gi, 'car')
-       .replace(/\bfondo de emergencia\b/gi, 'emergency fund savings')
-       .replace(/\bahorro\b/gi, 'savings');
-  return q;
+function refineQuery(rawQuery: string): string {
+  const query = rawQuery.trim();
+  if (!query) return 'savings money';
+  return query
+    .replace(/\bviaje a\b/gi, 'travel')
+    .replace(/\bviaje\b/gi, 'travel')
+    .replace(/\bvacaciones en\b/gi, 'vacation')
+    .replace(/\bvacaciones\b/gi, 'vacation')
+    .replace(/\bcasa\b/gi, 'house')
+    .replace(/\bcarro\b|\bauto\b|\bcoche\b/gi, 'car')
+    .replace(/\bfondo de emergencia\b/gi, 'emergency fund savings')
+    .replace(/\bahorro\b/gi, 'savings');
 }
 
 export function getDeterministicFallbackImage(key: string): string {
-  const q = key.toLowerCase();
+  const query = key.toLowerCase();
   let category = 'savings';
-  if (q.includes('japon') || q.includes('japan')) category = 'japan';
-  else if (q.includes('travel') || q.includes('viaje') || q.includes('peru') || q.includes('brasil')) category = 'travel';
-  else if (q.includes('house') || q.includes('casa') || q.includes('hogar')) category = 'home';
-  else if (q.includes('car') || q.includes('auto') || q.includes('carro')) category = 'car';
+  if (query.includes('japon') || query.includes('japan')) category = 'japan';
+  else if (query.includes('travel') || query.includes('viaje')) category = 'travel';
+  else if (query.includes('house') || query.includes('casa')) category = 'home';
+  else if (query.includes('car') || query.includes('auto')) category = 'car';
 
-  const list = FALLBACK_IMAGES[category] || FALLBACK_IMAGES.savings;
+  const images = FALLBACK_IMAGES[category] ?? FALLBACK_IMAGES.savings;
   let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    hash = (hash << 5) - hash + key.charCodeAt(i);
+  for (let index = 0; index < key.length; index += 1) {
+    hash = (hash << 5) - hash + key.charCodeAt(index);
     hash |= 0;
   }
-  const index = Math.abs(hash) % list.length;
-  return list[index];
+  return images[Math.abs(hash) % images.length];
 }
 
 export async function fetchUnsplashGoalImage(query: string): Promise<string> {
-  const accessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
   const cleanQuery = query.trim();
-
   if (!cleanQuery) {
     return getDeterministicFallbackImage('savings');
   }
 
-  const refinedQuery = getRefinedSearchQuery(cleanQuery);
-
-  if (accessKey) {
-    try {
-      const searchUrl = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(refinedQuery)}&orientation=landscape&per_page=5&client_id=${accessKey}`;
-      const res = await fetch(searchUrl);
-      if (res.ok) {
-        const data = (await res.json()) as UnsplashSearchResponse;
-        if (data.results && data.results.length > 0) {
-          const img = data.results[0]?.urls?.regular || data.results[0]?.urls?.small;
-          if (img) return img;
-        }
-      }
-    } catch (e) {
-      console.warn('Unsplash API search error, using fallback:', e);
-    }
+  try {
+    const response = await apiClient.get<{ url: string }>('/images/search', {
+      params: { query: refineQuery(cleanQuery) },
+    });
+    return response.data.url;
+  } catch {
+    return getDeterministicFallbackImage(cleanQuery);
   }
-
-  return getDeterministicFallbackImage(cleanQuery);
 }

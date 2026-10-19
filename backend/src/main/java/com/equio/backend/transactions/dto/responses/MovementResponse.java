@@ -13,5 +13,6 @@ public record MovementResponse(
         String categoryName,
         String categoryColor,
         String categoryIcon,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String source
 ) {}

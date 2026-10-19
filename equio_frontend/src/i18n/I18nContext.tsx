@@ -1,15 +1,10 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { translations, type AppLanguage } from './translations';
+import { I18nContext, type I18nContextValue } from './i18nContextValue';
+import { getLocalStorageItem, setLocalStorageItem } from '../utils/browserStorage';
+import { useAuth } from '../contexts/authContextValue';
 
 type TranslationLeaf = string;
-
-interface I18nContextType {
-  language: AppLanguage;
-  setLanguage: (language: AppLanguage) => void;
-  t: (key: string, params?: Record<string, string | number>) => string;
-}
-
-const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 function getBrowserLanguage(): AppLanguage {
   if (typeof navigator === 'undefined') {
@@ -42,56 +37,39 @@ function interpolate(template: string, params?: Record<string, string | number>)
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<AppLanguage>(() => {
-    if (typeof window === 'undefined') {
-      return 'es';
-    }
-
-    const stored = localStorage.getItem('equio_language');
-    if (stored === 'es' || stored === 'en') {
-      return stored;
-    }
-
-    try {
-      const rawUser = localStorage.getItem('user');
-      if (rawUser) {
-        const user = JSON.parse(rawUser);
-        if (user?.language === 'es' || user?.language === 'en') {
-          return user.language;
-        }
-      }
-    } catch {
-      return getBrowserLanguage();
-    }
-
-    return getBrowserLanguage();
+  const { user } = useAuth();
+  const accountKey = `${user?.id ?? 'guest'}:${user?.language ?? ''}`;
+  const [selection, setSelection] = useState(() => {
+    const stored = getLocalStorageItem('equio_language');
+    const language: AppLanguage = user?.language === 'es' || user?.language === 'en'
+      ? user.language : stored === 'es' || stored === 'en' ? stored : getBrowserLanguage();
+    return { accountKey, language };
   });
+  let { language } = selection;
 
-  const setLanguage = (nextLanguage: AppLanguage) => {
-    setLanguageState(nextLanguage);
-    localStorage.setItem('equio_language', nextLanguage);
-  };
+  // Reset the preference with the account, before rendering another account's views.
+  if (selection.accountKey !== accountKey) {
+    language = user?.language === 'es' || user?.language === 'en' ? user.language : selection.language;
+    setSelection({ accountKey, language });
+  }
+
+  const setLanguage = useCallback((nextLanguage: AppLanguage) => {
+    setSelection({ accountKey, language: nextLanguage });
+  }, [accountKey]);
 
   useEffect(() => {
+    setLocalStorageItem('equio_language', language);
     document.documentElement.lang = language;
   }, [language]);
 
-  const value = useMemo<I18nContextType>(() => ({
+  const value = useMemo<I18nContextValue>(() => ({
     language,
     setLanguage,
     t: (key, params) => {
       const current = resolveTranslation(language, key) ?? resolveTranslation('es', key) ?? key;
       return interpolate(current, params);
     },
-  }), [language]);
+  }), [language, setLanguage]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
-}
-
-export function useI18n() {
-  const context = useContext(I18nContext);
-  if (!context) {
-    throw new Error('useI18n must be used within an I18nProvider');
-  }
-  return context;
 }

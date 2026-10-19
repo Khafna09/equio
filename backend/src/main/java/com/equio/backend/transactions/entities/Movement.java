@@ -3,6 +3,7 @@ package com.equio.backend.transactions.entities;
 
 import com.equio.backend.shared.entities.AuditableModel;
 import com.equio.backend.transactions.entities.enums.MovementType;
+import com.equio.backend.transactions.entities.enums.MovementSource;
 import com.equio.backend.users.entities.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
@@ -27,6 +28,9 @@ public class Movement extends AuditableModel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    private long version;
+
     @NotNull
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
@@ -34,6 +38,16 @@ public class Movement extends AuditableModel {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private MovementType type;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private MovementSource source = MovementSource.MANUAL;
+
+    @Column(name = "source_goal_id")
+    private Long sourceGoalId;
+
+    @Column(name = "source_goal_name", length = 100)
+    private String sourceGoalName;
 
     @Size(max = 150)
     @Column(nullable = true, length = 150)

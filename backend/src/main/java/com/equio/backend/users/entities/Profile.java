@@ -1,6 +1,7 @@
 package com.equio.backend.users.entities;
 
 import com.equio.backend.shared.entities.AuditableModel;
+import com.equio.backend.users.entities.enums.BudgetMode;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -28,13 +29,20 @@ public class Profile extends AuditableModel{
     private String lastName;
 
     @Column(name="language", length = 10)
-    private String language = "es"; // Idioma por defecto
+    private String language = "es";
 
     @Column(name="currency", length = 10)
-    private String currency = "PEN"; // Moneda por defecto
+    private String currency = "PEN";
 
     @Column(name="theme", length = 20)
-    private String theme = "light"; // Tema por defecto
+    private String theme = "light";
+
+    @Column(name="time_format", nullable = false, length = 2)
+    private String timeFormat = "24";
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "budget_mode", nullable = false, length = 20)
+    private BudgetMode budgetMode = BudgetMode.NORMAL;
 
     public String getLanguage() {
         return language != null ? language : "es";
@@ -46,6 +54,14 @@ public class Profile extends AuditableModel{
 
     public String getTheme() {
         return theme != null ? theme : "light";
+    }
+
+    public String getTimeFormat() {
+        return timeFormat != null ? timeFormat : "24";
+    }
+
+    public BudgetMode getBudgetMode() {
+        return budgetMode != null ? budgetMode : BudgetMode.NORMAL;
     }
 
     @OneToOne(fetch = FetchType.LAZY)

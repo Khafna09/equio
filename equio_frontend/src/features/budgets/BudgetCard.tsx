@@ -1,39 +1,63 @@
 import { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
-import { MoreVertical, Pencil, Trash2, Check, X, GripVertical } from 'lucide-react';
+import { MoreVertical, Pencil, Trash2, Check, X, GripVertical, Link2, Unlink, CircleStop } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { getCategoryBadgeStyle } from '../../utils/categoryStyle';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useI18n } from '../../i18n/i18nContextValue';
+import type { BudgetResponse } from '../../types/budget.types';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 interface BudgetCardProps {
-  budget: any;
+  budget: BudgetResponse;
   onEdit: () => void;
   onDelete: () => void;
   onUpdateAmount: (newAmount: number) => Promise<void>;
   openMenuId: number | null;
   setOpenMenuId: (id: number | null) => void;
   isAdvancedMode?: boolean;
+  onLink?: () => void;
+  onDetach?: () => void;
+  onClose?: () => void;
 }
 
-export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuId, setOpenMenuId, isAdvancedMode = false }: BudgetCardProps) {
+export function BudgetCard({
+  budget,
+  onEdit,
+  onDelete,
+  onUpdateAmount,
+  openMenuId,
+  setOpenMenuId,
+  isAdvancedMode = false,
+  onLink,
+  onDetach,
+  onClose,
+}: BudgetCardProps) {
   const { formatCurrency: formatCurrencyHook } = useCurrency();
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const formatCurrency = (val: number) => formatCurrencyHook(val, { maximumFractionDigits: 0 });
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [editAmount, setEditAmount] = useState(String(budget.totalAmount));
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSaveAmount = async () => {
-    const val = parseFloat(editAmount);
-    if (isNaN(val) || val <= 0) return;
+    const val = parsePositiveMoney(editAmount);
+    if (val === null) {
+      setSaveError(t('common.invalidAmount'));
+      return;
+    }
 
+    setSaveError(null);
     setIsSaving(true);
     try {
       await onUpdateAmount(val);
       setIsEditingAmount(false);
+    } catch (error: unknown) {
+      setSaveError(getApiErrorMessage(error, t('budgetDrawer.saveError'), t));
     } finally {
       setIsSaving(false);
     }
@@ -45,36 +69,42 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
         <div className="flex items-center gap-3 min-w-0">
           <div
             className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 border"
-            style={getCategoryBadgeStyle(budget.categoryColor)}
+            style={getCategoryBadgeStyle(budget.categoryColor ?? undefined)}
           >
             {budget.categoryIcon || t('common.folderIcon')}
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-neutral-900 dark:text-white text-lg flex items-center gap-2 truncate">
-              {budget.name}
+              {budget.categoryName || t('common.category')}
               {isAdvancedMode && budget.parentBudgetId && (
                 <span className="text-[10px] bg-primary-50 text-primary-600 px-1.5 py-0.5 rounded-md font-medium uppercase tracking-wider">
-                  {language === 'en' ? 'Linked' : 'Vinculado'}
+                  {t('budgets.linked')}
                 </span>
               )}
               {isAdvancedMode && !budget.parentBudgetId && (
                 <span className="text-[10px] bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 px-1.5 py-0.5 rounded-md font-medium uppercase tracking-wider">
-                  {language === 'en' ? 'Independent' : 'Independiente'}
+                  {t('budgets.independent')}
                 </span>
               )}
             </h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{budget.categoryName || t('common.category')}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+              {isAdvancedMode
+                ? t(budget.parentBudgetId ? 'budgets.linked' : 'budgets.independent')
+                : t('budgets.subBudgetLabel')}
+            </p>
           </div>
         </div>
         <div className="relative z-10 flex items-center gap-1">
           <span 
             className="text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 p-1 rounded-lg cursor-grab active:cursor-grabbing transition-colors"
-            title={language === 'en' ? 'Drag to reorder' : 'Arrastra para reordenar'}
+            title={t('budgets.dragToReorder')}
           >
             <GripVertical className="w-4 h-4" />
           </span>
           <button
             onClick={() => setOpenMenuId(openMenuId === budget.id ? null : budget.id)}
+            aria-label={t('budgets.moreActions')}
+            aria-expanded={openMenuId === budget.id}
             className="text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 p-1 rounded-lg transition-colors"
           >
             <MoreVertical className="w-5 h-5" />
@@ -95,6 +125,39 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 >
                   <Pencil className="w-4 h-4" /> {t('budgets.editBudget')}
                 </button>
+                {isAdvancedMode && budget.canLink && onLink && (
+                  <button
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      onLink();
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-950/30 flex items-center gap-2"
+                  >
+                    <Link2 className="w-4 h-4" /> {t('budgets.linkAction')}
+                  </button>
+                )}
+                {isAdvancedMode && budget.canDetach && onDetach && (
+                  <button
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      onDetach();
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 flex items-center gap-2"
+                  >
+                    <Unlink className="w-4 h-4" /> {t('budgets.detachAction')}
+                  </button>
+                )}
+                {isAdvancedMode && budget.canClose && onClose && (
+                  <button
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      onClose();
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/30 flex items-center gap-2"
+                  >
+                    <CircleStop className="w-4 h-4" /> {t('budgets.closePeriodNow')}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setOpenMenuId(null);
@@ -127,9 +190,10 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 exit={{ opacity: 0, y: 10 }}
                 className="flex items-center gap-2"
               >
-                <span className="text-neutral-500 dark:text-neutral-400 font-medium">{language === 'en' ? 'of' : 'de'} {formatCurrency(budget.totalAmount)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400 font-medium">{t('common.of')} {formatCurrency(budget.totalAmount)}</span>
                 <button
                   onClick={() => setIsEditingAmount(true)}
+                  aria-label={t('budgets.editLimit')}
                   className="text-neutral-300 hover:text-neutral-500 dark:hover:text-neutral-300 dark:text-neutral-400 transition-colors"
                 >
                   <Pencil className="w-3.5 h-3.5" />
@@ -143,9 +207,12 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 exit={{ opacity: 0, y: -10 }}
                 className="flex items-center gap-1"
               >
-                <span className="text-neutral-500 dark:text-neutral-400 font-medium">{language === 'en' ? 'of' : 'de'}</span>
+                <span className="text-neutral-500 dark:text-neutral-400 font-medium">{t('common.of')}</span>
                 <input
                   type="number"
+                  min="0.01"
+                  max={MAX_MONEY_AMOUNT}
+                  step="0.01"
                   value={editAmount}
                   onChange={(e) => setEditAmount(e.target.value)}
                   className="w-20 px-2 py-1 text-sm bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded outline-none focus:border-primary-500 font-medium"
@@ -154,6 +221,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 />
                 <button
                   onClick={handleSaveAmount}
+                  aria-label={t('common.save')}
                   disabled={isSaving}
                   className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30 rounded transition-colors"
                 >
@@ -161,6 +229,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
                 </button>
                 <button
                   onClick={() => setIsEditingAmount(false)}
+                  aria-label={t('common.cancel')}
                   disabled={isSaving}
                   className="p-1 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors"
                 >
@@ -173,6 +242,7 @@ export function BudgetCard({ budget, onEdit, onDelete, onUpdateAmount, openMenuI
             {budget.progressPercentage}%
           </span>
         </div>
+        {saveError ? <p className="mb-2 text-xs text-rose-600 dark:text-rose-400">{saveError}</p> : null}
         <ProgressBar percentage={budget.progressPercentage} />
       </div>
     </Card>

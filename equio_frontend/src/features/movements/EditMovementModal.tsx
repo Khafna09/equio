@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { useMovements } from '../../hooks/useMovements';
@@ -13,7 +13,10 @@ import { DateTimePickerModal } from '../../components/ui/DateTimePickerModal';
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useTimeFormat } from '../../hooks/useTimeFormat';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 interface EditMovementModalProps {
   isOpen: boolean;
@@ -22,57 +25,51 @@ interface EditMovementModalProps {
   triggerRect?: TriggerRect | null;
 }
 
-export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: EditMovementModalProps) {
-  const { updateMovement, deleteMovement } = useMovements();
+function parseMovementDate(movement: MovementResponse | null): Date {
+  const rawDate = movement?.date || movement?.createdAt;
+  if (!rawDate) return new Date();
+  try {
+    const parsed = parseISO(rawDate);
+    return isValid(parsed) ? parsed : new Date();
+  } catch {
+    return new Date();
+  }
+}
+
+export function EditMovementModal(props: EditMovementModalProps) {
+  const key = `${props.isOpen ? 'open' : 'closed'}-${props.movement?.id ?? 'none'}`;
+  return <EditMovementModalContent key={key} {...props} />;
+}
+
+function EditMovementModalContent({ isOpen, onClose, movement, triggerRect }: EditMovementModalProps) {
+  const { updateMovement, deleteMovement } = useMovements(undefined, { enabled: false });
   const { categories, isLoading: isCategoriesLoading } = useCategories();
   const { symbol } = useCurrency();
+  const { formatTime } = useTimeFormat();
   const { t, language } = useI18n();
+  const isManaged = Boolean(movement?.source && movement.source !== 'MANUAL');
+  const parsedInitialDate = parseMovementDate(movement);
+  const initialCategory = movement?.categoryId != null
+    ? categories.find((category) => category.id === movement.categoryId) ?? {
+        id: movement.categoryId,
+        name: movement.categoryName ?? t('common.uncategorized'),
+        color: movement.categoryColor,
+        icon: movement.categoryIcon,
+      }
+    : null;
 
   const [viewMode, setViewMode] = useState<'MOVEMENT' | 'NEW_CATEGORY'>('MOVEMENT');
-  const [type, setType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState<Date>(new Date());
-  const [selectedCategory, setSelectedCategory] = useState<CategoryResponse | null>(null);
+  const [type, setType] = useState<'EXPENSE' | 'INCOME'>(movement?.type ?? 'EXPENSE');
+  const [amount, setAmount] = useState(movement ? String(movement.amount) : '');
+  const [description, setDescription] = useState(movement?.description ?? '');
+  const [date, setDate] = useState<Date>(parsedInitialDate);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryResponse | null>(initialCategory);
 
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  const [initialDate, setInitialDate] = useState<Date>(new Date());
-
-  useEffect(() => {
-    if (movement) {
-      setViewMode('MOVEMENT');
-      setType(movement.type);
-      setAmount(String(movement.amount));
-      setDescription(movement.description || '');
-
-      let parsedDate = new Date();
-      if (movement.date || movement.createdAt) {
-        const rawDateStr = movement.date || movement.createdAt;
-        try {
-          const d = parseISO(rawDateStr);
-          if (isValid(d)) parsedDate = d;
-        } catch { }
-      }
-      setDate(parsedDate);
-      setInitialDate(parsedDate);
-
-      const foundCat = categories.find(c => c.id === movement.categoryId);
-      if (foundCat) {
-        setSelectedCategory(foundCat);
-      } else {
-        setSelectedCategory({
-          id: movement.categoryId,
-          name: movement.categoryName,
-          color: movement.categoryColor,
-          icon: movement.categoryIcon
-        });
-      }
-    }
-  }, [movement, categories]);
+  const [initialDate] = useState<Date>(parsedInitialDate);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -87,10 +84,17 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!movement) return;
+    if (!movement || isManaged) return;
 
-    const parsedAmount = Math.abs(parseFloat(amount));
-    if (isNaN(parsedAmount) || parsedAmount <= 0 || !selectedCategory) return;
+    const parsedAmount = parsePositiveMoney(amount);
+    if (parsedAmount === null) {
+      setSubmitError(t('common.invalidAmount'));
+      return;
+    }
+    if (date.getTime() > Date.now()) {
+      setSubmitError(t('common.invalidDate'));
+      return;
+    }
 
     setSubmitError(null);
     setIsSubmitting(true);
@@ -101,28 +105,28 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
           amount: parsedAmount,
           type,
           description,
-          categoryId: selectedCategory.id,
+          categoryId: selectedCategory?.id ?? null,
           date: format(date, "yyyy-MM-dd'T'HH:mm:ss")
         }
       });
       handleClose();
-    } catch (error: any) {
-      setSubmitError(error?.message || t('movements.updateMovementError'));
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('movements.updateMovementError'), t));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!movement) return;
+    if (!movement || isManaged) return;
     if (!window.confirm(t('movements.deleteConfirm'))) return;
 
     setIsDeleting(true);
     try {
       await deleteMovement(movement.id);
       handleClose();
-    } catch (error: any) {
-      setSubmitError(error?.message || t('movements.deleteMovementError'));
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('movements.deleteMovementError'), t));
     } finally {
       setIsDeleting(false);
     }
@@ -135,6 +139,7 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
         onClose={handleClose}
         title={viewMode === 'MOVEMENT' ? t('movements.editMovement') : t('movements.newCategory')}
         triggerRect={triggerRect}
+        isDeemphasized={isDatePickerOpen}
       >
         <AnimatePresence mode="wait">
           {viewMode === 'MOVEMENT' ? (
@@ -193,8 +198,9 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
                   <span className={`text-3xl font-bold transition-colors ${type === 'EXPENSE' ? 'text-red-400' : 'text-emerald-400'}`}>{symbol}</span>
                   <input 
                     type="number" 
-                    min="0"
-                    step="1"
+                    min="0.01"
+                    max={MAX_MONEY_AMOUNT}
+                    step="0.01"
                     value={amount}
                     onChange={handleAmountChange}
                     placeholder="0"
@@ -207,7 +213,7 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
 
               <div>
                 <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 block text-center mb-3">
-                  {t('common.selectCategory')}
+                  {t('common.selectCategoryOptional')}
                 </span>
 
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1">
@@ -242,7 +248,7 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
                             </div>
                           )}
                           <span className="text-lg mb-0.5">{cat.icon || t('common.folderIcon')}</span>
-                          <span className="text-[11px] font-semibold truncate max-w-full text-center leading-tight">{cat.name}</span>
+                          <span className="text-[11px] font-semibold truncate max-w-full text-center leading-tight dark:text-neutral-100">{cat.name}</span>
                         </button>
                       );
                     })
@@ -269,7 +275,7 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
                     <Calendar className="w-4 h-4 text-neutral-400 shrink-0" />
                     <span className="truncate">
                       {format(date, 'd MMM, yyyy', { locale: language === 'en' ? enUS : es })}
-                      {!isSameMinute(date, initialDate) && ` - ${format(date, 'HH:mm')}`}
+                      {!isSameMinute(date, initialDate) && ` - ${formatTime(date)}`}
                     </span>
                   </button>
                 </div>
@@ -283,13 +289,15 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
                     placeholder={t('common.optionalNote')}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
+                    maxLength={150}
                     className="w-full pl-9 pr-3 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:border-primary-500"
                   />
                 </div>
               </div>
 
+              {isManaged && <p className="text-sm text-neutral-600 dark:text-neutral-300">{t('apiErrors.movementManagedByGoal')}</p>}
               {submitError && (
-                <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 text-sm">
+                <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 dark:bg-tertiary-950/35 dark:text-tertiary-300 text-sm">
                   {submitError}
                 </div>
               )}
@@ -300,8 +308,9 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
                   variant="secondary"
                   className="py-3.5 px-4 text-rose-500 hover:bg-rose-50 hover:text-rose-600 border-none bg-neutral-100 dark:bg-neutral-800"
                   onClick={handleDelete}
+                  aria-label={t('common.delete')}
                   isLoading={isDeleting}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isManaged}
                 >
                   <Trash2 className="w-5 h-5" />
                 </Button>
@@ -310,7 +319,7 @@ export function EditMovementModal({ isOpen, onClose, movement, triggerRect }: Ed
                   variant="primary" 
                   className={`flex-1 py-3.5 text-base font-semibold transition-colors ${type === 'EXPENSE' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
                   isLoading={isSubmitting}
-                  disabled={!amount || parseFloat(amount) <= 0 || !selectedCategory || isDeleting}
+                  disabled={parsePositiveMoney(amount) === null || isDeleting || isManaged}
                 >
                   {t('common.saveChanges')} &rarr;
                 </Button>

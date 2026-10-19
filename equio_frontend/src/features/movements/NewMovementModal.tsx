@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { useMovements } from '../../hooks/useMovements';
@@ -13,7 +13,10 @@ import { DateTimePickerModal } from '../../components/ui/DateTimePickerModal';
 import type { TriggerRect } from '../../hooks/useSharedElementModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCurrency } from '../../hooks/useCurrency';
-import { useI18n } from '../../i18n/I18nContext';
+import { useTimeFormat } from '../../hooks/useTimeFormat';
+import { useI18n } from '../../i18n/i18nContextValue';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { MAX_MONEY_AMOUNT, parsePositiveMoney } from '../../utils/moneyInput';
 
 interface NewMovementModalProps {
   isOpen: boolean;
@@ -22,23 +25,41 @@ interface NewMovementModalProps {
 }
 
 export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementModalProps) {
-  const { createMovement } = useMovements();
+  const { createMovement } = useMovements(undefined, { enabled: false });
   const { categories, isLoading: isCategoriesLoading } = useCategories();
   const { symbol } = useCurrency();
+  const { formatTime } = useTimeFormat();
   const { t, language } = useI18n();
 
   const [viewMode, setViewMode] = useState<'MOVEMENT' | 'NEW_CATEGORY'>('MOVEMENT');
   const [type, setType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState<Date>(new Date());
+  const [date, setDate] = useState<Date>(() => new Date());
+  const [initialDate, setInitialDate] = useState<Date>(() => new Date());
   const [selectedCategory, setSelectedCategory] = useState<CategoryResponse | null>(null);
 
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const [initialDate] = useState<Date>(new Date());
+  const resetForm = () => {
+    const now = new Date();
+    setDate(now);
+    setInitialDate(now);
+    setAmount('');
+    setDescription('');
+    setSelectedCategory(null);
+    setSubmitError(null);
+    setViewMode('MOVEMENT');
+    setType('EXPENSE');
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const timeoutId = window.setTimeout(resetForm, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -47,14 +68,21 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
   };
 
   const handleClose = () => {
-    setViewMode('MOVEMENT');
+    resetForm();
     onClose();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsedAmount = Math.abs(parseFloat(amount));
-    if (isNaN(parsedAmount) || parsedAmount <= 0 || !selectedCategory) return;
+    const parsedAmount = parsePositiveMoney(amount);
+    if (parsedAmount === null) {
+      setSubmitError(t('common.invalidAmount'));
+      return;
+    }
+    if (date.getTime() > Date.now()) {
+      setSubmitError(t('common.invalidDate'));
+      return;
+    }
 
     setSubmitError(null);
     setIsSubmitting(true);
@@ -63,15 +91,13 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
         amount: parsedAmount,
         type,
         description,
-        categoryId: selectedCategory.id,
+        categoryId: selectedCategory?.id,
         date: format(date, "yyyy-MM-dd'T'HH:mm:ss")
       });
-      setAmount('');
-      setDescription('');
-      setSelectedCategory(null);
-      handleClose();
-    } catch (error: any) {
-      setSubmitError(error?.message || 'Error al guardar el movimiento. Inténtalo de nuevo.');
+      resetForm();
+      onClose();
+    } catch (error: unknown) {
+      setSubmitError(getApiErrorMessage(error, t('movements.saveMovementError'), t));
     } finally {
       setIsSubmitting(false);
     }
@@ -84,6 +110,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
         onClose={handleClose}
         title={viewMode === 'MOVEMENT' ? t('movements.newMovement') : t('movements.newCategory')}
         triggerRect={triggerRect}
+        isDeemphasized={isDatePickerOpen}
       >
         <AnimatePresence mode="wait">
           {viewMode === 'MOVEMENT' ?(
@@ -136,14 +163,15 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
 
               <div className="flex flex-col items-center justify-center my-2">
                 <span className="text-xs font-bold text-neutral-400 dark:text-neutral-400 uppercase tracking-wider mb-2">
-                  {type === 'EXPENSE' ?'¿CUÁNTO HAS GASTADO?' : '¿CUÁNTO HAS INGRESADO?'}
+                  {type === 'EXPENSE' ? t('movements.expenseQuestion') : t('movements.incomeQuestion')}
                 </span>
                 <div className="flex items-center justify-center gap-1">
                   <span className={`text-3xl font-bold transition-colors ${type === 'EXPENSE' ?'text-red-400' : 'text-emerald-400'}`}>{symbol}</span>
                   <input 
                     type="number" 
-                    min="0"
-                    step="1"
+                    min="0.01"
+                    max={MAX_MONEY_AMOUNT}
+                    step="0.01"
                     value={amount}
                     onChange={handleAmountChange}
                     placeholder="0"
@@ -160,6 +188,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
                 selectedCategoryId={selectedCategory?.id}
                 onSelectCategory={setSelectedCategory}
                 onNewCategory={() => setViewMode('NEW_CATEGORY')}
+                optional
               />
 
               <div className="flex gap-3">
@@ -172,7 +201,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
                     <Calendar className="w-4 h-4 text-neutral-400 shrink-0" />
                     <span className="truncate">
                       {format(date, 'd MMM, yyyy', { locale: language === 'en' ?enUS : es })}
-                      {!isSameMinute(date, initialDate) && ` - ${format(date, 'HH:mm')}`}
+                      {!isSameMinute(date, initialDate) && ` - ${formatTime(date)}`}
                     </span>
                   </button>
                 </div>
@@ -186,13 +215,14 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
                     placeholder={t('common.optionalNote')}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
+                    maxLength={150}
                     className="w-full pl-9 pr-3 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:border-primary-500"
                   />
                 </div>
               </div>
 
               {submitError && (
-                <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 text-sm">
+                <div className="p-3 rounded-xl bg-tertiary-50 text-tertiary-600 dark:bg-tertiary-950/35 dark:text-tertiary-300 text-sm">
                   {submitError}
                 </div>
               )}
@@ -202,7 +232,7 @@ export function NewMovementModal({ isOpen, onClose, triggerRect }: NewMovementMo
                 variant="primary" 
                 className={`w-full py-3.5 text-base font-semibold transition-colors ${type === 'EXPENSE' ?'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
                 isLoading={isSubmitting}
-                disabled={!amount || parseFloat(amount) <= 0 || !selectedCategory}
+                disabled={parsePositiveMoney(amount) === null}
               >
                 {type === 'EXPENSE' ?t('movements.saveExpense') : t('movements.saveIncome')} &rarr;
               </Button>

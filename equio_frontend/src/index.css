@@ -9,10 +9,10 @@
   --color-primary-50: #F5F3FF;
   --color-primary-100: #EDE9FE;
   --color-primary-200: #DDD6FE;
-  --color-primary-300: #C4B5FD; /* Acento Claro */
+  --color-primary-300: #C4B5FD;
   --color-primary-400: #A78BFA;
-  --color-primary-500: #8B5CF6; /* Acento Principal */
-  --color-primary-600: #7C3AED; /* Hover / Texto sobre tinte */
+  --color-primary-500: #8B5CF6;
+  --color-primary-600: #7C3AED;
   --color-primary-700: #6D28D9;
   --color-primary-800: #5B21B6;
   --color-primary-900: #4C1D95;
@@ -23,14 +23,14 @@
   --color-secondary-200: #FCEAA3;
   --color-secondary-300: #FAD65A;
   --color-secondary-400: #F6C23E;
-  --color-secondary-500: #F0B23A; /* Advertencia / Destacado */
+  --color-secondary-500: #F0B23A;
   --color-secondary-600: #D99621;
   --color-secondary-700: #A86D12;
   --color-secondary-800: #855314;
   --color-secondary-900: #704416;
   --color-secondary-950: #422409;
 
-  /* Destacado Fuerte (Para Gastos y Montos Negativos) */
+
   --color-danger-50: #fff1f2;
   --color-danger-100: #ffe4e6;
   --color-danger-500: #f43f5e;
@@ -53,17 +53,17 @@
   --color-neutral-100: #F4F4F6;
   --color-neutral-200: #E6E6EA;
   --color-neutral-300: #D1D1D8;
-  --color-neutral-400: #9CA3AF;
-  --color-neutral-500: #6B7280;
-  --color-neutral-600: #4B5563;
-  --color-neutral-700: #374151;
-  --color-neutral-800: #1F2937;
-  --color-neutral-900: #2B2230; /* Texto oscuro */
+  --color-neutral-400: #A1A1AA;
+  --color-neutral-500: #73737E;
+  --color-neutral-600: #555560;
+  --color-neutral-700: #3A3A44;
+  --color-neutral-800: #24242B;
+  --color-neutral-900: #151419;
 
   /* Shadcn UI compatibility aliases */
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
-  
+
   --color-secondary: hsl(var(--secondary));
   --color-secondary-foreground: hsl(var(--secondary-foreground));
 
@@ -72,10 +72,10 @@
 
   --color-muted: hsl(var(--muted));
   --color-muted-foreground: hsl(var(--muted-foreground));
-  
+
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
-  
+
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
@@ -86,13 +86,14 @@
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: 250 30% 98%;
     --foreground: 260 25% 15%;
     --card: 0 0% 100%;
     --card-foreground: 260 25% 15%;
     --popover: 0 0% 100%;
     --popover-foreground: 260 25% 15%;
-    --primary: 263 90% 66%; /* #8B5CF6 */
+    --primary: 263 90% 66%;
     --primary-foreground: 0 0% 100%;
     --secondary: 41 86% 58%;
     --secondary-foreground: 0 0% 9%;
@@ -109,25 +110,26 @@
   }
 
   .dark {
-    --background: 240 20% 7%; /* Obsidian Deep Background #101116 */
-    --foreground: 250 20% 96%; /* Crisp Light Text #F3F2F8 */
-    --card: 240 18% 12%; /* Sleek Midnight Card #1A1C24 */
+    color-scheme: dark;
+    --background: 250 14% 7%;
+    --foreground: 250 20% 96%;
+    --card: 250 10% 12%;
     --card-foreground: 250 20% 96%;
-    --popover: 240 18% 12%;
+    --popover: 250 10% 12%;
     --popover-foreground: 250 20% 96%;
-    --primary: 263 90% 73%; /* Bright Violet accent for dark contrast #A78BFA */
-    --primary-foreground: 240 20% 7%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 41 86% 62%;
-    --secondary-foreground: 240 20% 7%;
-    --muted: 240 15% 18%;
-    --muted-foreground: 240 10% 65%;
-    --accent: 240 15% 18%;
+    --secondary-foreground: 250 14% 7%;
+    --muted: 250 8% 18%;
+    --muted-foreground: 250 8% 68%;
+    --accent: 250 8% 18%;
     --accent-foreground: 250 20% 96%;
     --destructive: 343 88% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 15% 20%; /* Dark Charcoal Border #292C38 */
-    --input: 240 15% 20%;
-    --ring: 263 90% 73%;
+    --border: 250 8% 22%;
+    --input: 250 8% 22%;
+    --ring: 262 83% 62%;
   }
 }
 
@@ -138,16 +140,10 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    background-image: radial-gradient(at 0% 0%, hsla(263, 90%, 96%, 0.5) 0px, transparent 50%),
-                      radial-gradient(at 100% 100%, hsla(240, 20%, 96%, 0.5) 0px, transparent 50%);
     background-attachment: fixed;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     transition: background-color 0.3s ease, color 0.3s ease;
-  }
-  .dark body {
-    background-image: radial-gradient(at 0% 0%, hsla(263, 90%, 20%, 0.25) 0px, transparent 50%),
-                      radial-gradient(at 100% 100%, hsla(240, 20%, 4%, 0.8) 0px, transparent 50%);
   }
 }
 
@@ -178,4 +174,10 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #45424d;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #5f5b69;
 }

@@ -1,21 +1,21 @@
 package com.equio.backend.savings.services;
 
+import com.equio.backend.shared.exceptions.ResourceNotFoundException;
+import com.equio.backend.shared.security.RlsContext;
+import com.equio.backend.shared.security.FinancialConcurrencyGuard;
+import com.equio.backend.shared.exceptions.BusinessConflictException;
 import com.equio.backend.budgets.entities.Budget;
-import com.equio.backend.budgets.repositories.BudgetRepository;
-import com.equio.backend.budgets.services.BudgetService;
+import com.equio.backend.budgets.services.BudgetLookupService;
 import com.equio.backend.savings.dto.requests.FundRequest;
 import com.equio.backend.savings.dto.requests.SavingGoalRequest;
 import com.equio.backend.savings.dto.responses.SavingGoalResponse;
 import com.equio.backend.savings.entities.SavingGoal;
 import com.equio.backend.savings.repositories.SavingGoalRepository;
-import com.equio.backend.transactions.entities.Category;
-import com.equio.backend.transactions.entities.Movement;
 import com.equio.backend.transactions.entities.enums.MovementType;
-import com.equio.backend.transactions.repositories.CategoryRepository;
-import com.equio.backend.transactions.repositories.MovementRepository;
+import com.equio.backend.transactions.dto.requests.CreateMovementRequest;
+import com.equio.backend.transactions.services.CreateMovementService;
 import com.equio.backend.users.entities.User;
-import com.equio.backend.users.repositories.UserRepository;
-import org.springframework.context.annotation.Lazy;
+import com.equio.backend.users.services.UserLookupService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,28 +28,32 @@ import java.util.List;
 public class SavingGoalServiceImpl implements SavingGoalService {
 
     private final SavingGoalRepository savingGoalRepository;
-    private final UserRepository userRepository;
-    private final BudgetRepository budgetRepository;
-    private final MovementRepository movementRepository;
-    private final BudgetService budgetService;
+    private final UserLookupService userLookupService;
+    private final BudgetLookupService budgetLookupService;
+    private final CreateMovementService createMovementService;
+    private final RlsContext rlsContext;
+    private final FinancialConcurrencyGuard concurrencyGuard;
 
     public SavingGoalServiceImpl(SavingGoalRepository savingGoalRepository,
-                                 UserRepository userRepository,
-                                 BudgetRepository budgetRepository,
-                                 MovementRepository movementRepository,
-                                 @Lazy BudgetService budgetService) {
+                                 UserLookupService userLookupService,
+                                 BudgetLookupService budgetLookupService,
+                                 CreateMovementService createMovementService,
+                                 RlsContext rlsContext,
+                                 FinancialConcurrencyGuard concurrencyGuard) {
         this.savingGoalRepository = savingGoalRepository;
-        this.userRepository = userRepository;
-        this.budgetRepository = budgetRepository;
-        this.movementRepository = movementRepository;
-        this.budgetService = budgetService;
+        this.userLookupService = userLookupService;
+        this.budgetLookupService = budgetLookupService;
+        this.createMovementService = createMovementService;
+        this.rlsContext = rlsContext;
+        this.concurrencyGuard = concurrencyGuard;
     }
 
     @Override
     @Transactional
     public SavingGoalResponse create(Long userId, SavingGoalRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
+        User user = userLookupService.requireUser(userId);
 
         SavingGoal goal = new SavingGoal();
         goal.setName(request.name());
@@ -61,12 +65,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
         goal.setUser(user);
 
         if (request.budgetId() != null) {
-            Budget budget = budgetRepository.findById(request.budgetId())
-                    .orElseThrow(() -> new IllegalArgumentException("Presupuesto no encontrado con ID: " + request.budgetId()));
-            // Verificar que el presupuesto pertenece al usuario
-            if (!budget.getUser().getId().equals(userId)) {
-                throw new IllegalArgumentException("El presupuesto no pertenece al usuario");
-            }
+            Budget budget = budgetLookupService.requireOwnedBudget(userId, request.budgetId());
             goal.setBudget(budget);
         }
 
@@ -76,6 +75,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional(readOnly = true)
     public List<SavingGoalResponse> getAllByUser(Long userId) {
+        rlsContext.setUserId(userId);
         return savingGoalRepository.findByUserId(userId)
                 .stream()
                 .map(this::toResponse)
@@ -85,13 +85,20 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional(readOnly = true)
     public SavingGoalResponse getById(Long userId, Long goalId) {
+        rlsContext.setUserId(userId);
         return toResponse(findGoalAndValidateOwner(userId, goalId));
     }
 
     @Override
     @Transactional
     public SavingGoalResponse update(Long userId, Long goalId, SavingGoalRequest request) {
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
+        if (request.targetAmount().compareTo(goal.getCurrentAmount()) < 0) {
+            throw new IllegalArgumentException(
+                    "The target amount cannot be lower than the current saved amount");
+        }
 
         goal.setName(request.name());
         goal.setTargetAmount(request.targetAmount());
@@ -100,11 +107,7 @@ public class SavingGoalServiceImpl implements SavingGoalService {
         goal.setImageUrl(request.imageUrl());
 
         if (request.budgetId() != null) {
-            Budget budget = budgetRepository.findById(request.budgetId())
-                    .orElseThrow(() -> new IllegalArgumentException("Presupuesto no encontrado con ID: " + request.budgetId()));
-            if (!budget.getUser().getId().equals(userId)) {
-                throw new IllegalArgumentException("El presupuesto no pertenece al usuario");
-            }
+            Budget budget = budgetLookupService.requireOwnedBudget(userId, request.budgetId());
             goal.setBudget(budget);
         } else {
             goal.setBudget(null);
@@ -120,15 +123,17 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional
     public SavingGoalResponse addOrWithdrawFund(Long userId, Long goalId, FundRequest request) {
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
 
         String operation = request.operation().toUpperCase();
-        User user = goal.getUser();
-        Category goalCategory = goal.getBudget() != null ? goal.getBudget().getCategory() : null;
+        Long goalCategoryId = goal.getBudget() != null && goal.getBudget().getCategory() != null
+                ? goal.getBudget().getCategory().getId()
+                : null;
 
         if ("ADD".equals(operation)) {
             BigDecimal newAmount = goal.getCurrentAmount().add(request.amount());
-            // Validar que no supere la meta
             if (newAmount.compareTo(goal.getTargetAmount()) > 0) {
                 throw new IllegalArgumentException(
                         "El aporte supera la meta. Máximo a aportar: " +
@@ -137,22 +142,14 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             }
             goal.setCurrentAmount(newAmount);
 
-            // Registrar movimiento de Gasto (EXPENSE) por el aporte a la meta
-            Movement movement = new Movement();
-            movement.setUser(user);
-            movement.setAmount(request.amount());
-            movement.setType(MovementType.EXPENSE);
-            movement.setDescription("Aporte a meta: " + goal.getName());
-            movement.setDate(LocalDateTime.now());
-            movement.setCategory(goalCategory);
-            movementRepository.save(movement);
-
-            // Actualizar presupuesto si aplica
-            Long catId = goalCategory != null ? goalCategory.getId() : null;
-            budgetService.addExpense(userId, catId, request.amount());
+            createMovementService.createGoalMovement(userId, goalId, goal.getName(), new CreateMovementRequest(
+                    request.amount(),
+                    MovementType.EXPENSE,
+                    "Aporte a meta: " + goal.getName(),
+                    LocalDateTime.now(),
+                    goalCategoryId));
 
         } else if ("WITHDRAW".equals(operation)) {
-            // Validar que haya suficiente saldo en la meta
             if (request.amount().compareTo(goal.getCurrentAmount()) > 0) {
                 throw new IllegalArgumentException(
                         "No puedes retirar más de lo ahorrado. Máximo a retirar: " + goal.getCurrentAmount()
@@ -160,15 +157,12 @@ public class SavingGoalServiceImpl implements SavingGoalService {
             }
             goal.setCurrentAmount(goal.getCurrentAmount().subtract(request.amount()));
 
-            // Registrar movimiento de Ingreso (INCOME) por el retiro de fondos ahorrados
-            Movement movement = new Movement();
-            movement.setUser(user);
-            movement.setAmount(request.amount());
-            movement.setType(MovementType.INCOME);
-            movement.setDescription("Retiro de meta: " + goal.getName());
-            movement.setDate(LocalDateTime.now());
-            movement.setCategory(goalCategory);
-            movementRepository.save(movement);
+            createMovementService.createGoalMovement(userId, goalId, goal.getName(), new CreateMovementRequest(
+                    request.amount(),
+                    MovementType.INCOME,
+                    "Retiro de meta: " + goal.getName(),
+                    LocalDateTime.now(),
+                    goalCategoryId));
 
         } else {
             throw new IllegalArgumentException("Operación inválida. Use 'ADD' o 'WITHDRAW'");
@@ -180,19 +174,20 @@ public class SavingGoalServiceImpl implements SavingGoalService {
     @Override
     @Transactional
     public void delete(Long userId, Long goalId) {
+        concurrencyGuard.lock(userId);
+        rlsContext.setUserId(userId);
         SavingGoal goal = findGoalAndValidateOwner(userId, goalId);
+        if (goal.getCurrentAmount().signum() > 0) {
+            throw new BusinessConflictException("GOAL_HAS_FUNDS",
+                    "Withdraw the remaining goal funds before deleting it.");
+        }
         savingGoalRepository.delete(goal);
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────
 
     private SavingGoal findGoalAndValidateOwner(Long userId, Long goalId) {
-        SavingGoal goal = savingGoalRepository.findById(goalId)
-                .orElseThrow(() -> new IllegalArgumentException("Meta de ahorro no encontrada con ID: " + goalId));
-        if (!goal.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("La meta de ahorro no pertenece al usuario");
-        }
-        return goal;
+        return savingGoalRepository.findByIdAndUserId(goalId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Saving goal"));
     }
 
     private SavingGoalResponse toResponse(SavingGoal goal) {
