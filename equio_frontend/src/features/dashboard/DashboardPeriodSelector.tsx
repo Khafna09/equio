@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { DashboardCalendarPeriod, DashboardPeriod } from '../../types/dashboard.types';
+import type { DashboardBudgetOption, DashboardCalendarPeriod, DashboardPeriod } from '../../types/dashboard.types';
 import { useI18n } from '../../i18n/i18nContextValue';
 import { cn } from '../../utils/classNames';
 
@@ -11,8 +11,10 @@ interface DashboardPeriodSelectorProps {
   value: DashboardPeriod;
   calendarPeriod: DashboardCalendarPeriod;
   hasActiveBudget: boolean;
+  activeBudgets: DashboardBudgetOption[];
+  selectedBudgetId: number | null;
   isLoading: boolean;
-  onBudgetSelect: () => void;
+  onBudgetSelect: (budgetId: number) => void;
   onCalendarViewSelect: () => void;
   onCalendarPeriodChange: (period: DashboardCalendarPeriod) => void;
 }
@@ -21,6 +23,8 @@ export function DashboardPeriodSelector({
   value,
   calendarPeriod,
   hasActiveBudget,
+  activeBudgets,
+  selectedBudgetId,
   isLoading,
   onBudgetSelect,
   onCalendarViewSelect,
@@ -28,8 +32,14 @@ export function DashboardPeriodSelector({
 }: DashboardPeriodSelectorProps) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
+  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const isBudgetView = value === 'BUDGET';
+  const selectedBudget = activeBudgets.find((budget) => budget.id === selectedBudgetId)
+    ?? activeBudgets[0];
+  const budgetLabel = selectedBudget?.scope === 'GLOBAL'
+    ? t('budgets.globalBudget')
+    : selectedBudget?.name;
 
   const options = calendarPeriods.map((period) => ({
     value: period,
@@ -42,14 +52,16 @@ export function DashboardPeriodSelector({
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setIsBudgetOpen(false);
       }
     }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setIsOpen(false);
+        setIsBudgetOpen(false);
       }
     }
-    if (isOpen) {
+    if (isOpen || isBudgetOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
     }
@@ -57,7 +69,7 @@ export function DashboardPeriodSelector({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen]);
+  }, [isOpen, isBudgetOpen]);
 
   if (isLoading) {
     return <div className="h-7.5 w-40 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" />;
@@ -66,6 +78,7 @@ export function DashboardPeriodSelector({
   const handlePeriodButtonClick = () => {
     if (isBudgetView) {
       onCalendarViewSelect();
+      setIsBudgetOpen(false);
       setIsOpen(true);
     } else {
       setIsOpen((prev) => !prev);
@@ -149,7 +162,8 @@ export function DashboardPeriodSelector({
         type="button"
         onClick={() => {
           setIsOpen(false);
-          onBudgetSelect();
+          setIsBudgetOpen(false);
+          if (selectedBudget) onBudgetSelect(selectedBudget.id);
         }}
         className={cn(
           'flex h-8 items-center justify-center rounded-lg px-3 text-xs font-semibold transition-all select-none',
@@ -158,8 +172,68 @@ export function DashboardPeriodSelector({
             : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
         )}
       >
-        {t('dashboard.periodBUDGET')}
+        <span>{t('dashboard.periodBUDGET')}</span>
+        {isBudgetView && budgetLabel ? (
+          <span className="max-w-28 truncate text-[11px] font-normal text-primary-600 dark:text-primary-300">
+            · {budgetLabel}
+          </span>
+        ) : null}
       </button>
+
+      {activeBudgets.length > 1 ? (
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setIsOpen(false);
+              setIsBudgetOpen((open) => !open);
+            }}
+            aria-label={t('dashboard.selectBudget')}
+            aria-expanded={isBudgetOpen}
+            aria-haspopup="menu"
+            className="flex h-8 w-7 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-white hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-white"
+          >
+            <ChevronDown className={cn('h-3 w-3 transition-transform', isBudgetOpen && 'rotate-180')} />
+          </button>
+          <AnimatePresence>
+            {isBudgetOpen ? (
+              <motion.div
+                initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+                className="absolute left-0 z-50 mt-1 min-w-52 overflow-hidden rounded-xl border border-neutral-200/80 bg-white/95 p-1 shadow-xl backdrop-blur-md dark:border-neutral-700 dark:bg-neutral-800/95"
+                role="menu"
+              >
+                {activeBudgets.map((budget) => {
+                  const label = budget.scope === 'GLOBAL' ? t('budgets.globalBudget') : budget.name;
+                  const selected = budget.id === selectedBudget?.id;
+                  return (
+                    <button
+                      key={budget.id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onBudgetSelect(budget.id);
+                        setIsBudgetOpen(false);
+                      }}
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs font-medium transition-colors',
+                        selected
+                          ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/50 dark:text-primary-300'
+                          : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60',
+                      )}
+                    >
+                      <span className="truncate">{label}</span>
+                      {selected ? <Check className="ml-2 h-3.5 w-3.5 shrink-0" /> : null}
+                    </button>
+                  );
+                })}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
+      ) : null}
 
       <div className="relative">
         <button

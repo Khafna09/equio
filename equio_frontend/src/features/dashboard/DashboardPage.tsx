@@ -217,6 +217,7 @@ export function DashboardPage() {
   const [isSavingsExpanded, setIsSavingsExpanded] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
   const [period, setPeriod] = useState<DashboardPeriod>('AUTO');
+  const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
   const [calendarPeriod, setCalendarPeriod] = useState<DashboardCalendarPeriod>(getStoredCalendarPeriod);
   const {
     data: summary,
@@ -224,7 +225,7 @@ export function DashboardPage() {
     isTransitioning: isDashboardTransitioning,
     error: dashboardError,
     refetch,
-  } = useDashboard(period);
+  } = useDashboard(period, period === 'BUDGET' ? selectedBudgetId : null);
   const dashboardSummary = isDashboardTransitioning ? null : summary;
   const summaryRange = dashboardSummary?.startDate && dashboardSummary?.endDate
     ? { startDate: dashboardSummary.startDate, endDate: dashboardSummary.endDate,
@@ -348,8 +349,10 @@ export function DashboardPage() {
           value={displayedPeriod}
           calendarPeriod={displayedCalendarPeriod}
           hasActiveBudget={hasActiveBudget}
+          activeBudgets={summary?.activeBudgets ?? []}
+          selectedBudgetId={selectedBudgetId ?? summary?.selectedBudgetId ?? null}
           isLoading={summary == null && isLoadingSummary}
-          onBudgetSelect={() => setPeriod('BUDGET')}
+          onBudgetSelect={(budgetId) => { setSelectedBudgetId(budgetId); setPeriod('BUDGET'); }}
           onCalendarViewSelect={() => setPeriod(calendarPeriod)}
           onCalendarPeriodChange={handleCalendarPeriodChange}
         />

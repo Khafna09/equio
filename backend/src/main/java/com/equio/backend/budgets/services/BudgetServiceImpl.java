@@ -86,7 +86,8 @@ public class BudgetServiceImpl implements BudgetService {
                 request.isFixed(),
                 Boolean.TRUE.equals(request.retroactiveCatchUp()),
                 request.startDate(),
-                request.endDate());
+                request.endDate(),
+                request.renewalDay());
         LocalDate finalStartDate = period.startDate();
         LocalDate finalEndDate = period.endDate();
 
@@ -118,6 +119,11 @@ public class BudgetServiceImpl implements BudgetService {
         budget.setFixed(request.isFixed());
         budget.setStartDate(finalStartDate);
         budget.setEndDate(finalEndDate);
+        budget.setRenewalDay(request.isFixed()
+                ? (request.renewalDay() != null
+                        ? request.renewalDay()
+                        : BudgetPolicy.inferRenewalDay(finalStartDate, finalEndDate))
+                : null);
         budget.setSavingsType(request.savingsType());
         budget.setSavingsValue(request.savingsValue());
         budget.setUser(user);
@@ -388,6 +394,11 @@ public class BudgetServiceImpl implements BudgetService {
             if (request.startDate() != null && !request.startDate().equals(budget.getStartDate())) {
                 budget.setNextStartDate(request.startDate());
             }
+            if (request.renewalDay() != null && !request.renewalDay().equals(budget.getRenewalDay())) {
+                budget.setRenewalDay(request.renewalDay());
+                budget.setNextStartDate(BudgetPolicy.nextAnchoredDateAfter(
+                        budget.getEndDate(), request.renewalDay()));
+            }
         } else {
             LocalDateTime newStart = isGlobal
                     ? accountingStart(userId, request.startDate(), request.endDate())
@@ -634,7 +645,8 @@ public class BudgetServiceImpl implements BudgetService {
                                 .atZone(java.time.ZoneId.systemDefault())
                                 .toLocalDateTime()
                         : null,
-                budget.getNextStartDate()
+                budget.getNextStartDate(),
+                budget.getRenewalDay()
         );
     }
 

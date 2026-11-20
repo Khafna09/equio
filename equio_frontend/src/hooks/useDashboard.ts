@@ -7,7 +7,7 @@ import { useI18n } from '../i18n/i18nContextValue';
 import { privateQueryKey, queryKeys, queryStaleTimes } from '../api/queryCache';
 import { useAuth } from '../contexts/authContextValue';
 
-export function useDashboard(period: DashboardPeriod = 'AUTO') {
+export function useDashboard(period: DashboardPeriod = 'AUTO', budgetId?: number | null) {
   const { user } = useAuth();
   const { t } = useI18n();
   const referenceDate = format(new Date(), 'yyyy-MM-dd');
@@ -18,9 +18,9 @@ export function useDashboard(period: DashboardPeriod = 'AUTO') {
     error,
     refetch
   } = useQuery<DashboardSummaryResponse>({
-    queryKey: privateQueryKey(user?.id, queryKeys.dashboard.summary(period, referenceDate)),
+    queryKey: privateQueryKey(user?.id, queryKeys.dashboard.summary(period, referenceDate, budgetId)),
     enabled: Boolean(user),
-    queryFn: () => dashboardApi.getSummary(period, referenceDate),
+    queryFn: () => dashboardApi.getSummary(period, referenceDate, budgetId),
     staleTime: queryStaleTimes.financial,
     placeholderData: (previous, query) => query?.queryKey[2] === user?.id
       ? keepPreviousData(previous) : undefined,

@@ -36,6 +36,31 @@ class BudgetPolicyTest {
     }
 
     @Test
+    void clampsTheThirtyFirstWithoutLosingTheMonthlyAnchor() {
+        var february = BudgetPolicy.resolvePeriod(
+                true, false, LocalDate.of(2026, 1, 31), LocalDate.of(2026, 2, 27), 31);
+        assertEquals(LocalDate.of(2026, 2, 27), february.endDate());
+        assertEquals(LocalDate.of(2026, 2, 28),
+                BudgetPolicy.nextAnchoredDateAfter(february.startDate(), 31));
+        assertEquals(LocalDate.of(2026, 3, 31),
+                BudgetPolicy.nextAnchoredDateAfter(LocalDate.of(2026, 2, 28), 31));
+    }
+
+    @Test
+    void usesLeapDayForAnchorsBeyondFebruary() {
+        assertEquals(LocalDate.of(2028, 2, 29),
+                BudgetPolicy.nextAnchoredDateAfter(LocalDate.of(2028, 1, 31), 31));
+        assertEquals(LocalDate.of(2028, 3, 31),
+                BudgetPolicy.nextAnchoredDateAfter(LocalDate.of(2028, 2, 29), 31));
+    }
+
+    @Test
+    void rejectsAnExplicitEndThatDoesNotMatchTheAnchor() {
+        assertThrows(IllegalArgumentException.class, () -> BudgetPolicy.resolvePeriod(
+                true, false, LocalDate.of(2026, 1, 31), LocalDate.of(2026, 2, 28), 31));
+    }
+
+    @Test
     void rejectsInvalidDateRange() {
         assertThrows(IllegalArgumentException.class, () -> BudgetPolicy.resolvePeriod(
                 false, false, LocalDate.of(2026, 8, 16), LocalDate.of(2026, 8, 15)));

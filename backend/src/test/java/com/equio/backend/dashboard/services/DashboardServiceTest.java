@@ -1,7 +1,9 @@
 package com.equio.backend.dashboard.services;
 
 import com.equio.backend.budgets.services.BudgetLookupService;
-import com.equio.backend.budgets.services.BudgetLookupService.GlobalBudgetSnapshot;
+import com.equio.backend.budgets.entities.enums.BudgetScope;
+import com.equio.backend.budgets.services.BudgetLookupService.DashboardBudgetSnapshot;
+import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import com.equio.backend.dashboard.dto.DashboardPeriod;
 import com.equio.backend.shared.security.RlsContext;
 import com.equio.backend.transactions.entities.enums.MovementType;
@@ -39,7 +41,9 @@ class DashboardServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(budgets.findActiveGlobal(1L)).thenReturn(Optional.of(snapshot("2026-09-05", "2026-10-04")));
+        when(budgets.findActiveDashboardBudgets(1L)).thenReturn(
+                List.of(snapshot(10L, "Global", BudgetScope.GLOBAL, null,
+                        "2026-09-05", "2026-10-04")));
         when(movements.sumByType(eq(1L), any(), any(), any())).thenAnswer(invocation ->
                 sum(invocation.getArgument(1), invocation.getArgument(2), invocation.getArgument(3)));
         when(movements.findExpenseCategoriesByPeriod(eq(1L), any(), any())).thenAnswer(invocation ->
@@ -59,12 +63,14 @@ class DashboardServiceTest {
         assertEquals(new BigDecimal("90"), result.expenseCategories().getFirst().totalSpent());
         assertTrue(result.hasActiveBudget());
         verify(rls).setUserId(1L);
-        verify(budgets).findActiveGlobal(1L);
+        verify(budgets).findActiveDashboardBudgets(1L);
     }
 
     @Test
     void budgetStartingTodayDoesNotIncludeEarlierExpenses() {
-        when(budgets.findActiveGlobal(1L)).thenReturn(Optional.of(snapshot("2026-09-17", "2026-09-30")));
+        when(budgets.findActiveDashboardBudgets(1L)).thenReturn(
+                List.of(snapshot(10L, "Global", BudgetScope.GLOBAL, null,
+                        "2026-09-17", "2026-09-30")));
         var result = service.getSummary(1L, DashboardPeriod.BUDGET, TODAY);
         assertEquals(TODAY, result.startDate());
         assertEquals(new BigDecimal("30"), result.totalExpense());
@@ -106,7 +112,7 @@ class DashboardServiceTest {
 
     @Test
     void closingOrDeletingTheBudgetFallsBackToTheMonth() {
-        when(budgets.findActiveGlobal(1L)).thenReturn(Optional.empty());
+        when(budgets.findActiveDashboardBudgets(1L)).thenReturn(List.of());
         for (DashboardPeriod period : List.of(DashboardPeriod.AUTO, DashboardPeriod.BUDGET)) {
             var result = service.getSummary(1L, period, TODAY);
             assertEquals(DashboardPeriod.MONTH, result.period());
@@ -116,9 +122,41 @@ class DashboardServiceTest {
         }
     }
 
-    private GlobalBudgetSnapshot snapshot(String start, String end) {
-        return new GlobalBudgetSnapshot(new BigDecimal("1000"), new BigDecimal("100"),
-                LocalDate.parse(start), LocalDate.parse(end));
+    @Test
+    void independentBudgetScopesExpensesAndExposesSelection() {
+        when(budgets.findActiveDashboardBudgets(1L)).thenReturn(List.of(
+                snapshot(21L, "Food", BudgetScope.INDEPENDENT_CATEGORY, 8L,
+                        "2026-09-05", "2026-10-04")));
+        when(movements.sumExpensesByCategory(eq(1L), eq(8L), any(), any()))
+                .thenReturn(new BigDecimal("90"));
+
+        var result = service.getSummary(1L, DashboardPeriod.BUDGET, TODAY, 21L);
+
+        assertEquals(21L, result.selectedBudgetId());
+        assertEquals("Food", result.selectedBudgetName());
+        assertEquals(BudgetScope.INDEPENDENT_CATEGORY, result.selectedBudgetScope());
+        assertEquals(new BigDecimal("90"), result.totalExpense());
+        assertEquals(new BigDecimal("910"), result.balance());
+        assertEquals(1, result.activeBudgets().size());
+        assertEquals("Food", result.expenseCategories().getFirst().categoryName());
+        verify(movements).sumExpensesByCategory(eq(1L), eq(8L), any(), any());
+    }
+
+    @Test
+    void rejectsAnInactiveOrForeignBudgetSelection() {
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getSummary(1L, DashboardPeriod.BUDGET, TODAY, 999L));
+    }
+
+    private DashboardBudgetSnapshot snapshot(Long id, String name, BudgetScope scope, Long categoryId,
+                                               String start, String end) {
+        return new DashboardBudgetSnapshot(id, name, scope, categoryId,
+                categoryId != null ? name : null,
+                categoryId != null ? "#008800" : null,
+                null,
+                new BigDecimal("1000"),
+                scope == BudgetScope.GLOBAL ? new BigDecimal("100") : BigDecimal.ZERO,
+                LocalDate.parse(start), LocalDate.parse(end), LocalDate.parse(start).atStartOfDay());
     }
 
     private BigDecimal sum(MovementType type, LocalDateTime start, LocalDateTime end) {

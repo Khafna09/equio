@@ -6,5 +6,10 @@ import com.equio.backend.dashboard.dto.DashboardPeriod;
 
 public interface DashboardService {
 
-    DashboardSummaryResponse getSummary(Long userId, DashboardPeriod period, LocalDate referenceDate);
+    default DashboardSummaryResponse getSummary(Long userId, DashboardPeriod period, LocalDate referenceDate) {
+        return getSummary(userId, period, referenceDate, null);
+    }
+
+    DashboardSummaryResponse getSummary(Long userId, DashboardPeriod period, LocalDate referenceDate,
+                                        Long budgetId);
 }

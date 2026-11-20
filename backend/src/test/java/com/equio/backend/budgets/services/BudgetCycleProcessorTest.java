@@ -69,4 +69,38 @@ class BudgetCycleProcessorTest {
         processor.processUser(1L, LocalDate.now());
         verifyNoInteractions(repository, settlements, guard, rls);
     }
+
+    @Test
+    void restoresTheThirtyFirstAfterAShortMonth() {
+        var stored = new ArrayList<Budget>();
+        Budget original = new Budget();
+        User user = new User();
+        user.setId(1L);
+        original.setUser(user);
+        original.setId(1L);
+        original.setName("Month end");
+        original.setFixed(true);
+        original.setRenewalDay(31);
+        original.setTotalAmount(new BigDecimal("500"));
+        original.setStartDate(LocalDate.of(2026, 1, 31));
+        original.setEndDate(LocalDate.of(2026, 2, 27));
+        stored.add(original);
+        when(jobs.tryAcquire(anyLong())).thenReturn(true);
+        when(repository.findByUserIdAndStatus(1L, BudgetStatus.ACTIVE)).thenAnswer(call ->
+                stored.stream().filter(b -> b.getStatus() == BudgetStatus.ACTIVE).toList());
+        when(repository.save(any(Budget.class))).thenAnswer(call -> {
+            Budget budget = call.getArgument(0);
+            budget.setId((long) stored.size() + 1);
+            stored.add(budget);
+            return budget;
+        });
+
+        processor.processUser(1L, LocalDate.of(2026, 4, 1));
+
+        assertEquals(3, stored.size());
+        Budget active = stored.getLast();
+        assertEquals(LocalDate.of(2026, 3, 31), active.getStartDate());
+        assertEquals(LocalDate.of(2026, 4, 29), active.getEndDate());
+        assertEquals(31, active.getRenewalDay());
+    }
 }

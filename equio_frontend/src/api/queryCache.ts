@@ -17,7 +17,8 @@ export const queryKeys = {
   },
   dashboard: {
     root: ['dashboard'] as const,
-    summary: (period: DashboardPeriod, referenceDate: string) => ['dashboard', period, referenceDate] as const,
+    summary: (period: DashboardPeriod, referenceDate: string, budgetId?: number | null) =>
+      ['dashboard', period, referenceDate, budgetId ?? null] as const,
   },
   movements: {
     root: ['movements'] as const,

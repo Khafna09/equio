@@ -7,6 +7,8 @@ import com.equio.backend.budgets.entities.enums.SavingsType;
 import com.equio.backend.budgets.entities.enums.BudgetStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import java.sql.Types;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -62,6 +64,10 @@ public class Budget extends AuditableModel {
 
     @Column(nullable = true)
     private LocalDate nextStartDate;
+
+    @Column(nullable = true)
+    @JdbcTypeCode(Types.SMALLINT)
+    private Integer renewalDay;
 
     private LocalDateTime accountingStartAt;
 

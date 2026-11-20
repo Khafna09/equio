@@ -36,7 +36,8 @@ describe('query cache contracts', () => {
     expect(queryKeys.movements.recent(filters, 5)).toEqual(['movements', 'recent', filters, 5]);
     expect(queryKeys.movements.dates('2026-10-01', '2026-10-31')).toEqual(['movements', 'dates', '2026-10-01', '2026-10-31']);
     expect(queryKeys.budgets.report(7)).toEqual(['budgets', 'report', 7]);
-    expect(queryKeys.dashboard.summary('BUDGET', '2026-08-05')).toEqual(['dashboard', 'BUDGET', '2026-08-05']);
+    expect(queryKeys.dashboard.summary('BUDGET', '2026-08-05')).toEqual(['dashboard', 'BUDGET', '2026-08-05', null]);
+    expect(queryKeys.dashboard.summary('BUDGET', '2026-08-05', 7)).toEqual(['dashboard', 'BUDGET', '2026-08-05', 7]);
   });
 
   it('invalidates every requested domain from its root key', async () => {

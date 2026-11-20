@@ -6,6 +6,8 @@ import com.equio.backend.dashboard.dto.responses.DashboardSummaryResponse;
 import com.equio.backend.transactions.entities.enums.MovementType;
 import com.equio.backend.transactions.services.MovementQueryService;
 import com.equio.backend.budgets.services.BudgetLookupService;
+import com.equio.backend.budgets.services.BudgetLookupService.DashboardBudgetSnapshot;
+import com.equio.backend.shared.exceptions.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,10 +40,15 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     @Transactional(readOnly = true)
-    public DashboardSummaryResponse getSummary(Long userId, DashboardPeriod requestedPeriod, LocalDate referenceDate) {
+    public DashboardSummaryResponse getSummary(Long userId, DashboardPeriod requestedPeriod,
+                                               LocalDate referenceDate, Long budgetId) {
         rlsContext.setUserId(userId);
 
-        var activeBudget = budgetLookupService.findActiveGlobal(userId).orElse(null);
+        List<DashboardBudgetSnapshot> activeBudgets = budgetLookupService.findActiveDashboardBudgets(userId);
+        DashboardBudgetSnapshot activeBudget = selectBudget(activeBudgets, budgetId);
+        if (budgetId != null && activeBudget == null) {
+            throw new ResourceNotFoundException("Budget");
+        }
         DashboardPeriod period = requestedPeriod;
         if (period == DashboardPeriod.AUTO || (period == DashboardPeriod.BUDGET && activeBudget == null)) {
             period = activeBudget != null ? DashboardPeriod.BUDGET : DashboardPeriod.MONTH;
@@ -72,8 +79,11 @@ public class DashboardServiceImpl implements DashboardService {
 
         BigDecimal totalIncome = movementQueryService.sumByType(
                 userId, MovementType.INCOME, startDateTime, endDateTime);
-        BigDecimal totalExpense = movementQueryService.sumByType(
-                userId, MovementType.EXPENSE, startDateTime, endDateTime);
+        BigDecimal totalExpense = period == DashboardPeriod.BUDGET && activeBudget.categoryId() != null
+                ? movementQueryService.sumExpensesByCategory(
+                        userId, activeBudget.categoryId(), startDateTime, endDateTime)
+                : movementQueryService.sumByType(
+                        userId, MovementType.EXPENSE, startDateTime, endDateTime);
 
 
         if (totalIncome == null) totalIncome = BigDecimal.ZERO;
@@ -83,18 +93,21 @@ public class DashboardServiceImpl implements DashboardService {
         BigDecimal globalBudgetAmount = null;
         BigDecimal savingsDeduction = null;
 
-        var currentGlobalBudget = period == DashboardPeriod.BUDGET ? activeBudget : null;
-        if (currentGlobalBudget != null) {
-            globalBudgetAmount = currentGlobalBudget.totalAmount();
-            savingsDeduction = currentGlobalBudget.savingsDeduction();
+        var currentBudget = period == DashboardPeriod.BUDGET ? activeBudget : null;
+        if (currentBudget != null) {
+            globalBudgetAmount = currentBudget.totalAmount();
+            savingsDeduction = currentBudget.savingsDeduction();
 
             balance = globalBudgetAmount.subtract(savingsDeduction).subtract(totalExpense);
         } else {
             balance = totalIncome.subtract(totalExpense);
         }
 
-        var categoryRows = movementQueryService.findExpenseCategoriesByPeriod(
-                userId, startDateTime, endDateTime);
+        var categoryRows = currentBudget != null && currentBudget.categoryId() != null
+                ? List.of(new MovementQueryService.CategoryExpenseSnapshot(
+                        currentBudget.categoryName(), currentBudget.categoryColor(),
+                        currentBudget.categoryIcon(), totalExpense))
+                : movementQueryService.findExpenseCategoriesByPeriod(userId, startDateTime, endDateTime);
 
         List<DashboardSummaryResponse.CategorySummary> expenseCategories = new ArrayList<>();
         for (var row : categoryRows) {
@@ -117,6 +130,10 @@ public class DashboardServiceImpl implements DashboardService {
         }
 
         List<DashboardSummaryResponse.CategorySummary> topCategories = expenseCategories.stream().limit(3).toList();
+        List<DashboardSummaryResponse.BudgetOption> budgetOptions = activeBudgets.stream()
+                .map(budget -> new DashboardSummaryResponse.BudgetOption(
+                        budget.id(), budget.name(), budget.scope(), budget.startDate(), budget.endDate()))
+                .toList();
 
         return new DashboardSummaryResponse(
                 totalIncome,
@@ -124,13 +141,27 @@ public class DashboardServiceImpl implements DashboardService {
                 balance,
                 globalBudgetAmount,
                 savingsDeduction,
+                currentBudget != null ? currentBudget.id() : null,
+                currentBudget != null ? currentBudget.name() : null,
+                currentBudget != null ? currentBudget.scope() : null,
+                budgetOptions,
                 expenseCategories,
                 topCategories,
                 period,
                 startDate,
                 endDate,
-                activeBudget != null,
+                !activeBudgets.isEmpty(),
                 startDateTime
         );
+    }
+
+    private DashboardBudgetSnapshot selectBudget(List<DashboardBudgetSnapshot> activeBudgets, Long budgetId) {
+        if (budgetId == null) {
+            return activeBudgets.stream().findFirst().orElse(null);
+        }
+        return activeBudgets.stream()
+                .filter(budget -> budget.id().equals(budgetId))
+                .findFirst()
+                .orElse(null);
     }
 }

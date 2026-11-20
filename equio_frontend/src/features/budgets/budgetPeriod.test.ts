@@ -63,4 +63,50 @@ describe('calculateFixedBudgetPeriod', () => {
       retroactive: false,
     });
   });
+
+  it('clamps day 31 to non-leap February and restores it in March', () => {
+    expect(calculateFixedBudgetPeriod({
+      today: new Date(2026, 1, 28, 12),
+      renewDay: 31,
+      catchUpOption: 'RETROACTIVE',
+    })).toEqual({
+      startDate: '2026-02-28',
+      endDate: '2026-03-30',
+      retroactive: false,
+    });
+
+    expect(calculateFixedBudgetPeriod({
+      today: new Date(2026, 2, 31, 12),
+      renewDay: 31,
+      catchUpOption: 'RETROACTIVE',
+    })).toEqual({
+      startDate: '2026-03-31',
+      endDate: '2026-04-29',
+      retroactive: false,
+    });
+  });
+
+  it('uses leap day for anchors 29 through 31', () => {
+    expect(calculateFixedBudgetPeriod({
+      today: new Date(2028, 1, 20, 12),
+      renewDay: 31,
+      catchUpOption: 'FROM_TODAY',
+    })).toEqual({
+      startDate: '2028-02-20',
+      endDate: '2028-02-28',
+      retroactive: false,
+    });
+  });
+
+  it('keeps a retroactive day-31 cycle contiguous across a short month', () => {
+    expect(calculateFixedBudgetPeriod({
+      today: new Date(2026, 1, 20, 12),
+      renewDay: 31,
+      catchUpOption: 'RETROACTIVE',
+    })).toEqual({
+      startDate: '2026-01-31',
+      endDate: '2026-02-27',
+      retroactive: true,
+    });
+  });
 });

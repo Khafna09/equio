@@ -50,9 +50,9 @@ function BudgetDrawerContent({
   const isEditing = budgetToEdit?.id != null;
   const periodSource = budgetToEdit ?? (!defaultIsGlobal ? globalBudget : undefined);
   const today = format(new Date(), 'yyyy-MM-dd');
-  const initialStartDay = periodSource?.startDate
+  const initialStartDay = periodSource?.renewalDay ?? (periodSource?.startDate
     ? new Date(`${periodSource.startDate}T00:00:00`).getDate() || 1
-    : 1;
+    : 1);
   const initialIsGlobal = globalBudget && !isEditing
     ? false
     : budgetToEdit
@@ -68,7 +68,9 @@ function BudgetDrawerContent({
   const [startDate, setStartDate] = useState(periodSource?.startDate ?? today);
   const [endDate, setEndDate] = useState(periodSource?.endDate ?? today);
   const [catchUpOption, setCatchUpOption] = useState<BudgetCatchUpOption>('RETROACTIVE');
-  const [futureRenewDay, setFutureRenewDay] = useState<number | ''>('');
+  const [futureRenewDay, setFutureRenewDay] = useState<number | ''>(
+    budgetToEdit?.renewalDay ?? ''
+  );
   const [hasInteractedWithPeriod, setHasInteractedWithPeriod] = useState(false);
   const [selectedSubBudgetsToAdopt, setSelectedSubBudgetsToAdopt] = useState<number[]>([]);
   const [isIndependentCategory, setIsIndependentCategory] = useState(
@@ -128,7 +130,10 @@ function BudgetDrawerContent({
         savingsValue: budgetToEdit?.savingsValue ?? undefined,
         retroactiveCatchUp: isRetroactive,
         subBudgetsToAdopt: (isGlobal && isAdvancedMode) ? selectedSubBudgetsToAdopt : undefined,
-        isIndependent: (!isGlobal && isAdvancedMode) ? isIndependentCategory : false
+        isIndependent: (!isGlobal && isAdvancedMode) ? isIndependentCategory : false,
+        renewalDay: isFixed
+          ? (budgetToEdit?.renewalDay ?? (Number(futureRenewDay) || initialStartDay))
+          : undefined,
       };
 
       if (budgetToEdit?.id != null) {
@@ -486,12 +491,12 @@ function BudgetDrawerContent({
                                     {(() => {
                                       const today = new Date();
                                       const targetDay = Number(futureRenewDay) || 1;
-                                      let cycleStart: Date;
-                                      if (targetDay > today.getDate()) {
-                                         cycleStart = new Date(today.getFullYear(), today.getMonth() - 1, targetDay);
-                                      } else {
-                                         cycleStart = new Date(today.getFullYear(), today.getMonth(), targetDay);
-                                      }
+                                      const period = calculateFixedBudgetPeriod({
+                                        today,
+                                        renewDay: targetDay,
+                                        catchUpOption: 'RETROACTIVE',
+                                      });
+                                      const cycleStart = new Date(`${period.startDate}T00:00:00`);
                                       const diffTime = Math.abs(today.getTime() - cycleStart.getTime());
                                       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                                       const monthName = format(cycleStart, 'MMMM', { locale: language === 'en' ? enUS : es });
@@ -531,16 +536,12 @@ function BudgetDrawerContent({
                                     {(() => {
                                       const today = new Date();
                                       const targetDay = Number(futureRenewDay) || 1;
-
-                                      let nextCycleStart: Date;
-                                      if (targetDay > today.getDate()) {
-                                        nextCycleStart = new Date(today.getFullYear(), today.getMonth(), targetDay);
-                                      } else {
-                                        nextCycleStart = new Date(today.getFullYear(), today.getMonth() + 1, targetDay);
-                                      }
-
-                                      const firstCycleEnd = new Date(nextCycleStart);
-                                      firstCycleEnd.setDate(firstCycleEnd.getDate() - 1);
+                                      const period = calculateFixedBudgetPeriod({
+                                        today,
+                                        renewDay: targetDay,
+                                        catchUpOption: 'FROM_TODAY',
+                                      });
+                                      const firstCycleEnd = new Date(`${period.endDate}T00:00:00`);
 
                                       const endMonthName = format(firstCycleEnd, 'MMMM', { locale: language === 'en' ? enUS : es });
                                       const capitalizedEndMonth = endMonthName.charAt(0).toUpperCase() + endMonthName.slice(1);

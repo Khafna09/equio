@@ -55,6 +55,8 @@ public class DashboardController {
                     - `globalBudgetAmount`: Limite del general activo, o null. Nunca toma presupuestos cerrados.
                     - `savingsDeduction`: Reserva en la vista BUDGET, o null.
                     - `hasActiveBudget`: Indica si se puede seleccionar BUDGET.
+                    - `activeBudgets`: Presupuestos globales o independientes activos seleccionables.
+                    - `selectedBudgetId`: Presupuesto aplicado cuando period=BUDGET.
                     - `expenseCategories`: Todas las categorías con gastos, para el gráfico circular
                     - `topCategories`: Top 3 categorías donde más se gastó, con su porcentaje del total
 
@@ -74,6 +76,7 @@ public class DashboardController {
             @RequestParam(required = false) @Min(1) @Max(12) Integer month,
             @RequestParam(required = false) @Min(2000) @Max(2100) Integer year,
             @RequestParam(defaultValue = "AUTO") DashboardPeriod period,
+            @RequestParam(required = false) @Min(1) Long budgetId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate referenceDate) {
 
         var user = userService.requireAuthenticated(userDetails.getUsername());
@@ -89,7 +92,10 @@ public class DashboardController {
         if (anchor.getYear() < 2000 || anchor.getYear() > 2100) {
             throw new IllegalArgumentException("referenceDate year must be between 2000 and 2100");
         }
+        if (budgetId != null && period != DashboardPeriod.BUDGET && period != DashboardPeriod.AUTO) {
+            throw new IllegalArgumentException("budgetId can only be used with BUDGET or AUTO");
+        }
 
-        return ResponseEntity.ok(dashboardService.getSummary(user.getId(), period, anchor));
+        return ResponseEntity.ok(dashboardService.getSummary(user.getId(), period, anchor, budgetId));
     }
 }

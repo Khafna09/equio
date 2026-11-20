@@ -55,13 +55,16 @@ public class BudgetCycleProcessor {
                 budgets.saveAndFlush(budget);
                 settlements.publishSettlement(budget, budget.getEndDate());
                 if (budget.isFixed()) {
-                    LocalDate start = budget.getEndDate().plusDays(1);
+                    int renewalDay = budget.getRenewalDay() != null
+                            ? budget.getRenewalDay()
+                            : BudgetPolicy.inferRenewalDay(budget.getStartDate(), budget.getEndDate());
+                    LocalDate start = BudgetPolicy.nextAnchoredDateAfter(budget.getStartDate(), renewalDay);
                     if (budget.getNextStartDate() != null && budget.getNextStartDate().isAfter(start)) {
                         start = budget.getNextStartDate();
                     }
-                    Budget renewed = budgets.save(copy(budget, start));
+                    Budget renewed = budgets.save(copy(budget, start, renewalDay));
                     for (Budget child : children) {
-                        Budget renewedChild = copy(child, start);
+                        Budget renewedChild = copy(child, start, renewalDay);
                         renewedChild.setParentBudget(renewed);
                         budgets.save(renewedChild);
                     }
@@ -78,7 +81,7 @@ public class BudgetCycleProcessor {
         budget.setClosedAt(budget.getEndDate().atTime(LocalTime.of(23, 59, 59, 999_999_000)));
     }
 
-    private Budget copy(Budget source, LocalDate start) {
+    private Budget copy(Budget source, LocalDate start, int renewalDay) {
         Budget target = new Budget();
         target.setName(source.getName());
         target.setTotalAmount(source.getTotalAmount().subtract(source.getSavingsPoolContribution()));
@@ -86,7 +89,8 @@ public class BudgetCycleProcessor {
         target.setFixed(true);
         target.setStartDate(start);
         target.setAccountingStartAt(start.atStartOfDay());
-        target.setEndDate(start.plusMonths(1).minusDays(1));
+        target.setEndDate(BudgetPolicy.nextAnchoredDateAfter(start, renewalDay).minusDays(1));
+        target.setRenewalDay(renewalDay);
         target.setCategory(source.getCategory());
         target.setUser(source.getUser());
         target.setSavingsType(source.getSavingsType());

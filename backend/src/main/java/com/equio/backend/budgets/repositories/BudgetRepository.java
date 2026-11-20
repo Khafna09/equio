@@ -24,7 +24,11 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
     @Query("select b from Budget b where b.id = :id and b.user.id = :userId")
     Optional<Budget> findForUpdateByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "category")
     List<Budget> findByUserIdAndStatus(Long userId, BudgetStatus status);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "category")
+    List<Budget> findByUserIdAndStatusAndParentBudgetIsNull(Long userId, BudgetStatus status);
 
     List<Budget> findByStatus(BudgetStatus status);
 

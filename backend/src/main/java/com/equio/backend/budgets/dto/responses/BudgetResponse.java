@@ -39,5 +39,6 @@ public record BudgetResponse(
         boolean canClose,
         boolean isOverBudget,
         LocalDateTime createdAt,
-        LocalDate nextStartDate
+        LocalDate nextStartDate,
+        Integer renewalDay
 ) {}

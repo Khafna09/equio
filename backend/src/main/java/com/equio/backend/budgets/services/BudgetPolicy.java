@@ -5,6 +5,7 @@ import com.equio.backend.budgets.entities.enums.SavingsType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.YearMonth;
 
 final class BudgetPolicy {
 
@@ -12,10 +13,23 @@ final class BudgetPolicy {
     }
 
     static Period resolvePeriod(boolean fixed, boolean retroactive, LocalDate startDate, LocalDate endDate) {
+        return resolvePeriod(fixed, retroactive, startDate, endDate, null);
+    }
+
+    static Period resolvePeriod(boolean fixed, boolean retroactive, LocalDate startDate, LocalDate endDate,
+                                Integer renewalDay) {
         if (startDate == null) {
             throw new IllegalArgumentException("Every budget requires a start date");
         }
         if (fixed) {
+            if (renewalDay != null) {
+                validateRenewalDay(renewalDay);
+                LocalDate resolvedEnd = nextAnchoredDateAfter(startDate, renewalDay).minusDays(1);
+                if (endDate != null && !endDate.equals(resolvedEnd)) {
+                    throw new IllegalArgumentException("The end date does not match the monthly renewal day");
+                }
+                return new Period(startDate, resolvedEnd);
+            }
             // An explicit range also describes monthly cycles starting on a custom day.
             LocalDate resolvedStart = retroactive && endDate == null ? startDate.withDayOfMonth(1) : startDate;
             LocalDate resolvedEnd = endDate != null
@@ -33,6 +47,33 @@ final class BudgetPolicy {
             throw new IllegalArgumentException("The end date cannot be before the start date");
         }
         return new Period(startDate, endDate);
+    }
+
+    static int inferRenewalDay(LocalDate startDate, LocalDate endDate) {
+        if (endDate != null) {
+            return endDate.plusDays(1).getDayOfMonth();
+        }
+        return startDate.getDayOfMonth();
+    }
+
+    static LocalDate nextAnchoredDateAfter(LocalDate date, int renewalDay) {
+        validateRenewalDay(renewalDay);
+        YearMonth month = YearMonth.from(date);
+        LocalDate candidate = anchoredDate(month, renewalDay);
+        if (!candidate.isAfter(date)) {
+            candidate = anchoredDate(month.plusMonths(1), renewalDay);
+        }
+        return candidate;
+    }
+
+    private static LocalDate anchoredDate(YearMonth month, int renewalDay) {
+        return month.atDay(Math.min(renewalDay, month.lengthOfMonth()));
+    }
+
+    private static void validateRenewalDay(int renewalDay) {
+        if (renewalDay < 1 || renewalDay > 31) {
+            throw new IllegalArgumentException("Renewal day must be between 1 and 31");
+        }
     }
 
     static void validateSavings(BigDecimal total, SavingsType type, BigDecimal value) {

@@ -9,6 +9,14 @@ export interface CategorySummary {
   percentage: number;
 }
 
+export interface DashboardBudgetOption {
+  id: number;
+  name: string;
+  scope: 'GLOBAL' | 'INDEPENDENT_CATEGORY';
+  startDate: string;
+  endDate: string;
+}
+
 export interface DashboardSummaryResponse {
   accountingStartAt?: string;
   totalIncome: number;
@@ -16,6 +24,10 @@ export interface DashboardSummaryResponse {
   balance: number;
   globalBudgetAmount: number | null;
   savingsDeduction: number | null;
+  selectedBudgetId: number | null;
+  selectedBudgetName: string | null;
+  selectedBudgetScope: DashboardBudgetOption['scope'] | null;
+  activeBudgets: DashboardBudgetOption[];
   expenseCategories: CategorySummary[];
   topCategories: CategorySummary[];
   period: Exclude<DashboardPeriod, 'AUTO'>;

@@ -30,6 +30,7 @@ export interface BudgetResponse {
   isOverBudget: boolean;
   createdAt: string;
   nextStartDate?: string;
+  renewalDay?: number;
 }
 
 export interface BudgetCapabilities {
@@ -67,6 +68,7 @@ export interface BudgetRequest {
   retroactiveCatchUp?: boolean;
   subBudgetsToAdopt?: number[];
   isIndependent?: boolean;
+  renewalDay?: number;
 }
 
 export interface BudgetHistoryCategory {
