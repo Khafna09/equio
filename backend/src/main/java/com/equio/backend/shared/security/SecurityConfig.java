@@ -85,6 +85,8 @@ public class SecurityConfig {
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                         .requireCsrfProtectionMatcher(csrfProtectedEndpoints()))
                 .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(org.springframework.http.HttpMethod.POST,
+                            "/api/v1/webhooks/postal").permitAll();
                     auth.requestMatchers(
                             "/api/v1/auth/**",
                             "/actuator/health/liveness",

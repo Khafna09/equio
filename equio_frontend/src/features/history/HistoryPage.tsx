@@ -21,6 +21,7 @@ import { useTimeFormat } from '../../hooks/useTimeFormat';
 import { useI18n } from '../../i18n/i18nContextValue';
 import type { MovementFilters, MovementResponse } from '../../types/movement.types';
 import { HistoryCalendar } from './HistoryCalendar';
+import { EmailDraftsPanel } from './EmailDraftsPanel';
 
 type MainMovementFilter = 'ALL' | 'INCOME' | 'EXPENSE';
 type HistoryFilterType = MainMovementFilter | 'CATEGORY';
@@ -467,6 +468,7 @@ export function HistoryPage() {
           )}
         </div>
 
+        {import.meta.env.VITE_EMAIL_DRAFTS_ENABLED === 'true' && <EmailDraftsPanel />}
         <div className="flex gap-6 h-full min-h-[500px]">
           <div className="w-[280px] shrink-0 space-y-4 flex flex-col">
             <HistoryCalendar
